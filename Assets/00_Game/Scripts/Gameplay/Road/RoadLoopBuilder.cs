@@ -72,6 +72,15 @@ public class RoadLoopBuilder : MonoBehaviour
     [FoldoutGroup("Board")][SerializeField] private Sprite boardSprite;      // asphalt-texture_0
     [FoldoutGroup("Board")][SerializeField] private Material boardMaterial;  // sprite shader, _MainTex = atlas của boardSprite
 
+    [FoldoutGroup("Board"), LabelText("Mũi tên cột"), Tooltip("Sprite tam giác chỉ xuống. Mỗi cột có 1 ở đầu + 1 ở cuối.")]
+    [SerializeField, OnValueChanged(nameof(BuildBoard))] private Sprite columnArrow;
+    [FoldoutGroup("Board"), LabelText("Material mũi tên"), Tooltip("Để trống = dùng dashMaterial.")]
+    [SerializeField, OnValueChanged(nameof(BuildBoard))] private Material columnArrowMaterial;
+    [FoldoutGroup("Board"), LabelText("Scale mũi tên")]
+    [SerializeField, Min(0.01f), OnValueChanged(nameof(BuildBoard))] private float columnArrowScale = 3f;
+    [FoldoutGroup("Board"), LabelText("Mũi tên cách đầu/cuối cột (px)"), Tooltip("Âm = đẩy ra ngoài cột (vào phần lề).")]
+    [SerializeField, OnValueChanged(nameof(BuildBoard))] private float columnArrowInset = 50f;
+
     private const string BoardName = "Board";
     private const float DividerCol = 56.5f; // tâm viền trong của profile → màu viền phẳng
 
@@ -415,7 +424,10 @@ public class RoadLoopBuilder : MonoBehaviour
             while (s < b)
             {
                 float pos = Mathf.Repeat(s - sA, RowTile);
+                // Sai số float có thể cho pos ≈ RowTile → bước = 0 → kẹt vòng lặp. Coi như đầu tile mới.
+                if (RowTile - pos < 0.01f) pos = 0f;
                 float e = Mathf.Min(b, s + (RowTile - pos));
+                if (e <= s) break;
                 float ta = Mathf.Lerp(sp.T0, sp.T1, (s - sp.S0) / sp.Len);
                 float tb = Mathf.Lerp(sp.T0, sp.T1, (e - sp.S0) / sp.Len);
 
@@ -572,6 +584,39 @@ public class RoadLoopBuilder : MonoBehaviour
 
         BuildBoardFill(root);
         BuildDividers(root);
+        BuildColumnArrows(root);
+    }
+
+    /// <summary>Mỗi cột 2 mũi tên chỉ xuống (hướng xe chạy): 1 ở đầu cột, 1 ở cuối cột.</summary>
+    private void BuildColumnArrows(Transform root)
+    {
+        if (columnArrow == null) return;
+
+        var parent = new GameObject("Arrows").transform;
+        parent.SetParent(root, false);
+
+        float y0 = BoardTop + columnPaddingY + columnArrowInset;    // px, y xuống
+        float y1 = BoardBottom - columnPaddingY - columnArrowInset;
+        Material mat = columnArrowMaterial != null ? columnArrowMaterial : dashMaterial;
+
+        for (int i = 0; i < columnCount; i++)
+        {
+            float x = GetColumnCenter(i).x / PxToUnit;
+            CreateArrow(parent, $"Arrow-{i}-Top", new Vector2(x, y0), mat);
+            CreateArrow(parent, $"Arrow-{i}-Bottom", new Vector2(x, y1), mat);
+        }
+    }
+
+    private void CreateArrow(Transform parent, string name, Vector2 px, Material mat)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = ToLocal(px);
+        go.transform.localScale = Vector3.one * (columnArrow.pixelsPerUnit * PxToUnit * columnArrowScale);
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = columnArrow;
+        sr.sortingOrder = 5;
+        if (mat != null) sr.sharedMaterial = mat;
     }
 
     [FoldoutGroup("Board"), Button("Clear Board")]
