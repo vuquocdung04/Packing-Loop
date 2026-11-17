@@ -32,6 +32,13 @@ public class ColumnTapController : MonoBehaviour
     [Tooltip("Xe chạy vòng phía sau phải còn cách điểm nhập ≥ quãng từ vạch chờ tới làn × hệ số này + 1 khoảng an toàn.")]
     [SerializeField] private float mergeLookBehind = 1f;
 
+    [BoxGroup("Cột đủ màu"), LabelText("FX biến mất"), SerializeField] private GameObject clearFx; // CarClearFX
+    [BoxGroup("Cột đủ màu"), LabelText("Chờ trước khi biến (s)"), SerializeField] private float clearDelay = 0.05f;
+    [BoxGroup("Cột đủ màu"), LabelText("Cách nhau mỗi xe (s)"), SerializeField] private float clearStagger = 0.04f;
+    [BoxGroup("Cột đủ màu"), LabelText("Thời gian thu nhỏ (s)"), SerializeField] private float clearShrinkTime = 0.16f;
+    [BoxGroup("Cột đủ màu"), LabelText("Phình lên trước khi thu"), SerializeField] private float clearPop = 1.2f;
+    [BoxGroup("Cột đủ màu"), LabelText("Nảy lên (unit)"), SerializeField] private float clearHop = 0.35f;
+
     private class Column
     {
         public readonly List<Transform> Cars = new();      // 0 = dưới cùng
@@ -40,9 +47,26 @@ public class ColumnTapController : MonoBehaviour
         public readonly List<RoadCar> Leaving = new();     // xe vừa ra, chưa rời hẳn ô dưới cùng
         public readonly List<Vector3> Slots = new();       // vị trí pivot từng ô, 0 = dưới cùng
         public Coroutine Shift;
+        public bool Clearing;                               // đang chạy animation biến mất
 
         public int Capacity => Slots.Count;
         public int Reserved => Cars.Count + Incoming.Count;
+
+        /// <summary>Đủ chỗ (tính cả xe đang vào) và tất cả cùng 1 màu.</summary>
+        public bool FullOneColor
+        {
+            get
+            {
+                if (Capacity == 0 || Reserved < Capacity) return false;
+                string c0 = Colors.Count > 0 ? Colors[0] : Incoming[0].ColorKey;
+                foreach (string c in Colors) if (c != c0) return false;
+                foreach (RoadCar rc in Incoming) if (rc.ColorKey != c0) return false;
+                return true;
+            }
+        }
+
+        /// <summary>Không cho tap: đang biến mất, hoặc đã/đang đủ 1 màu (chờ xe cuối vào).</summary>
+        public bool Locked => Clearing || FullOneColor;
 
         /// <summary>Màu xe cuối hàng (tính cả xe đang vào). null = cột trống.</summary>
         public string TailColor => Incoming.Count > 0 ? Incoming[^1].ColorKey
@@ -203,7 +227,7 @@ public class ColumnTapController : MonoBehaviour
     private void Launch(int c)
     {
         Column col = _cols[c];
-        if (col.Cars.Count == 0) return;
+        if (col.Cars.Count == 0 || col.Locked) return;
 
         Transform pivot = col.Cars[0];
         col.Cars.RemoveAt(0);
@@ -286,7 +310,7 @@ public class ColumnTapController : MonoBehaviour
 
     private bool CanPark(Column col, string color)
     {
-        if (col.Reserved >= col.Capacity) return false;
+        if (col.Clearing || col.Reserved >= col.Capacity) return false;
         string tail = col.TailColor;
         return tail == null || tail == color;
     }
@@ -361,6 +385,85 @@ public class ColumnTapController : MonoBehaviour
         }
         for (int i = 0; i < cars.Count && i < col.Slots.Count; i++) cars[i].position = col.Slots[i];
         col.Shift = null;
+
+        // Xe cuối đã vào chỗ và cả cột 1 màu → biến mất.
+        if (!col.Clearing && col.Incoming.Count == 0 && col.FullOneColor)
+            StartCoroutine(ClearColumn(col));
+    }
+
+    // ================= CỘT ĐỦ 1 MÀU → BIẾN MẤT =================
+
+    /// <summary>Từ xe đầu (dưới cùng) tới xe cuối: phình nhẹ → thu về 0 → bung particle. Xong thì cột trống.</summary>
+    private IEnumerator ClearColumn(Column col)
+    {
+        col.Clearing = true;
+        yield return new WaitForSeconds(clearDelay);
+
+        var cars = new List<Transform>(col.Cars);
+        for (int i = 0; i < cars.Count; i++)
+        {
+            StartCoroutine(PopAndVanish(cars[i]));
+            yield return new WaitForSeconds(clearStagger);
+        }
+        yield return new WaitForSeconds(clearShrinkTime);
+
+        foreach (Transform t in cars) if (t != null) Destroy(t.gameObject);
+        col.Cars.Clear();
+        col.Colors.Clear();
+        col.Clearing = false; // cột trống, nhận màu khác
+    }
+
+    /// <summary>Phình + nảy lên nhanh (35%) → bung FX → co về 0 kiểu ease-in (tăng tốc dần, dứt khoát).</summary>
+    private IEnumerator PopAndVanish(Transform car)
+    {
+        Vector3 s0 = car.localScale, p0 = car.position;
+        float tPop = clearShrinkTime * 0.35f;
+        bool fxDone = false;
+        for (float t = 0f; t < clearShrinkTime; t += Time.deltaTime)
+        {
+            float k, hop;
+            if (t < tPop)
+            {
+                float u = t / tPop;
+                float e = 1f - (1f - u) * (1f - u);           // ease-out
+                k = Mathf.Lerp(1f, clearPop, e);
+                hop = clearHop * e;
+            }
+            else
+            {
+                if (!fxDone) { fxDone = true; SpawnClearFx(car); }
+                float u = (t - tPop) / (clearShrinkTime - tPop);
+                k = Mathf.Lerp(clearPop, 0f, u * u);            // ease-in
+                hop = clearHop * (1f - u * 0.5f);
+            }
+            car.localScale = s0 * k;
+            car.position = p0 + Vector3.up * hop;
+            yield return null;
+        }
+        if (!fxDone) SpawnClearFx(car);
+        car.localScale = Vector3.zero;
+    }
+
+    private void SpawnClearFx(Transform car)
+    {
+        if (clearFx == null) return;
+        GameObject fx = Instantiate(clearFx, car.position + Vector3.up * 0.5f, Quaternion.identity);
+        Destroy(fx, 2f);
+
+        // Tô màu particle theo màu thân xe (sáng lên chút cho rõ trên nền tối).
+        Color tint = Color.white;
+        Renderer r = car.GetComponentInChildren<Renderer>();
+        if (r != null && r.sharedMaterials.Length > 0 && r.sharedMaterials[0] != null && r.sharedMaterials[0].HasProperty("_BaseColor"))
+            tint = Color.Lerp(r.sharedMaterials[0].GetColor("_BaseColor"), Color.white, 0.2f);
+
+        foreach (ParticleSystem ps in fx.GetComponentsInChildren<ParticleSystem>())
+        {
+            var main = ps.main;
+            Color c = main.startColor.color;
+            main.startColor = new Color(tint.r, tint.g, tint.b, c.a);
+            ps.Clear(true);
+            ps.Play(true);
+        }
     }
 
     private static void AddQuadBezier(List<Vector3> path, Vector3 p0, Vector3 c, Vector3 p1, int steps)
