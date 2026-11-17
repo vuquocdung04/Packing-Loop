@@ -1,0 +1,130 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: CarColor-Lilac
+  m_Shader: {fileID: 4800000, guid: 1844177379004673a3183c97e748b7eb, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords:
+  - TCP2_AMBIENT
+  - TCP2_SPECULAR
+  - _RECEIVE_SHADOWS_OFF
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 1
+  m_DoubleSidedGI: 1
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties:
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+      _BaseMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+      _Ramp:
+        m_Texture: {fileID: 2800000, guid: d7a3e2bd6b45077409ff3005bcb84389, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+      _layer_materialLayer:
+        m_Texture: {fileID: 2800000, guid: 131cfabe3f84238458702eb57f2af64f, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: {}
+    m_Floats:
+      _AddPrecomputedVelocity: 0
+      _AlphaClip: 0
+      _AlphaToMask: 0
+      _Blend: 0
+      _BlendModePreserveSpecular: 1
+      _BlendOp: 0
+      _BumpScale: 1
+      _ClearCoatMask: 0
+      _ClearCoatSmoothness: 0
+      _Cull: 0
+      _Cutoff: 0.5
+      _DetailAlbedoMapScale: 1
+      _DetailNormalMapScale: 1
+      _DstBlend: 0
+      _DstBlendAlpha: 0
+      _EnvironmentReflections: 0
+      _GlossMapScale: 1
+      _Glossiness: 0.5
+      _GlossyReflections: 1
+      _Metallic: 0
+      _Mode: 0
+      _NormalsSource: 0
+      _NormalsUVType: 0
+      _OcclusionStrength: 1
+      _OutlineWidth: 0.1
+      _Parallax: 0.02
+      _QueueOffset: 0
+      _RampSmoothing: 0.628
+      _RampSmoothingOtherLights: 0.704
+      _RampTextureOffset: 0.829
+      _RampTextureSize: 0.639
+      _RampThreshold: 0.895
+      _RampThresholdOtherLights: 0.939
+      _ReceiveShadows: 0
+      _ReceiveShadowsOff: 0
+      _RimMax: 1
+      _RimMin: 0.6
+      _SampleGI: 0
+      _Shadow_HSV_H: 0
+      _Shadow_HSV_S: 0
+      _Shadow_HSV_V: 0
+      _SketchMax: 1
+      _SketchMin: 0
+      _SketchTexture_OffsetSpeed: 120
+      _Smoothness: 0.35
+      _SmoothnessTextureChannel: 0
+      _SpecularHighlights: 1
+      _SpecularRoughnessPBR: 0.42
+      _SpecularSmoothness: 1
+      _SpecularToonBands: 3
+      _SrcBlend: 1
+      _SrcBlendAlpha: 1
+      _Surface: 0
+      _UVSec: 0
+      _UseAmbient: 1
+      _UseSpecular: 1
+      _WorkflowMode: 0
+      _XRMotionVectorsPass: 1
+      _ZWrite: 1
+      __BeginGroup_HSV_albedo: 0
+      __BeginGroup_ShadowHSV: 1
+      __EndGroup: 0
+      __dummy__: 0
+      _albedo_hue: 0
+      _albedo_sat: 0.654
+      _albedo_val: 0
+    m_Colors:
+      _BaseColor: {r: 0.6708295, g: 0.28490567, b: 1, a: 1}
+      _BaseColor_materialLayer: {r: 0.18530829, g: 0, b: 0.20754719, a: 1}
+      _Color: {r: 1, g: 1, b: 1, a: 1}
+      _EmissionColor: {r: 0, g: 0, b: 0, a: 0}
+      _HColor: {r: 1, g: 1, b: 1, a: 1}
+      _OutlineColorVertex: {r: 0, g: 0, b: 0, a: 1}
+      _RimColor: {r: 0.72156864, g: 0.72156864, b: 0.72156864, a: 0.5}
+      _SColor: {r: 0.12213431, g: 0, b: 0.16226411, a: 1}
+      _SketchColor: {r: 1, g: 0.98612654, b: 0.2924527, a: 1}
+      _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
+      _SpecularColor: {r: 0.9702156, g: 0.9264151, b: 1, a: 0}
+      _TCP2_AMBIENT_BACK: {r: 0.40784314, g: 0.078431375, b: 0.78039217, a: 1}
+      _TCP2_AMBIENT_BOTTOM: {r: 0.40784314, g: 0.078431375, b: 0.78039217, a: 1}
+      _TCP2_AMBIENT_FRONT: {r: 0.40784314, g: 0.078431375, b: 0.78039217, a: 1}
+      _TCP2_AMBIENT_LEFT: {r: 0.49467164, g: 0.07843136, b: 0.78039217, a: 1}
+      _TCP2_AMBIENT_RIGHT: {r: 0.49803922, g: 0.078431346, b: 0.78039217, a: 1}
+      _TCP2_AMBIENT_TOP: {r: 0.66388124, g: 0.26981127, b: 1, a: 1}
+      _VColorBlendOffset: {r: 0, g: 0, b: 0, a: 0}
+      _VColorBlendSmooth: {r: 0.25, g: 0.25, b: 0.25, a: 0.25}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 0

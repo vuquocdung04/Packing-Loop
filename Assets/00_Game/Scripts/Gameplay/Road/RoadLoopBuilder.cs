@@ -13,7 +13,8 @@ public class RoadLoopBuilder : MonoBehaviour
     private const string GeneratedName = "Generated";
 
     // Mặt cắt Road_Vertical (cột pixel, tính từ trái): viền trong 34–79, asphalt 91–402, viền ngoài 411–455.
-    private const float RoadWidth = 421f;          // mép ngoài viền ngoài → mép trong viền trong
+    private const float DefaultRoadWidth = 421f;   // bề rộng gốc của profile: mép ngoài viền ngoài → mép trong viền trong
+    private const float MinRoadWidth = 250f;
     private const float OuterColEdge = 455f;       // cột mép ngoài viền ngoài (d = 0)
     private const float OuterColIn = 403f;         // bóng phía trong viền ngoài
     private const float OuterColOut = 467f;        // bóng phía ngoài viền ngoài
@@ -22,12 +23,17 @@ public class RoadLoopBuilder : MonoBehaviour
     private const float InnerColOut = 23f;         // bóng phía bàn chơi
     private const float InnerColIn = 90f;
     private const float InnerColCenter = 56.5f;
+    // Cột UV cho MẶT TRÊN viền: bỏ phần rìa tối/bóng ở mép profile (bóng giờ vẽ riêng, lệch xuống dưới).
+    private const float OuterUvOut = 457f;
+    private const float InnerUvOut = 32f;
+    // Phía mặt đường: dừng trước vệt tối (AO) của asphalt trong profile, giữ phần vát của viền.
+    private const float OuterUvIn = 409f;
+    private const float InnerUvIn = 80f;
     private const float AsphaltColA = 130f;
     private const float AsphaltColB = 370f;
     private const float RowStart = 10f;            // bỏ vài hàng đầu/cuối (border của sprite)
     private const float RowTile = 440f;
     private const float CapRow = 230f;
-    private const float LaneInset = 225f;          // tâm làn tính từ mép ngoài
     private const float MinRadius = 60f;
 
     [BoxGroup("Kích thước (px)"), LabelText("Nửa ngang (mép ngoài)")]
@@ -48,6 +54,10 @@ public class RoadLoopBuilder : MonoBehaviour
     [Tooltip("Quãng đường (px) dọc theo vòng tới đầu bo thứ hai. Bên trái đối xứng.")]
     [SerializeField, Min(0f), OnValueChanged(nameof(Build))] private float innerCurbEnd = 3540f;
 
+    [BoxGroup("Kích thước (px)"), LabelText("Bề rộng đường")]
+    [Tooltip("Mép ngoài viền ngoài → mép trong viền trong (gốc 421). Kéo 2 chấm vàng ở cạnh phải trong Scene: chấm ngoài nới ra ngoài (bàn giữ nguyên), chấm trong nới vào trong.")]
+    [SerializeField, OnValueChanged(nameof(Build))] private float roadWidth = DefaultRoadWidth;
+
     [FoldoutGroup("Art")][SerializeField, Required] private Sprite profile;          // Road_Vertical
     [FoldoutGroup("Art")][SerializeField, Required] private Material roadMaterial;   // sprite shader, _MainTex = atlas của profile
     [FoldoutGroup("Art")][SerializeField] private Sprite dash;                       // dashed_line_0
@@ -58,6 +68,14 @@ public class RoadLoopBuilder : MonoBehaviour
     [BoxGroup("Vạch đứt"), LabelText("Khoảng cách vạch"), Tooltip("Càng lớn càng ít vạch.")]
     [SerializeField, Min(10f), OnValueChanged(nameof(Build))] private float dashPeriod = 300f;
 
+
+    // Viền nổi: thành bên + bóng lấy nguyên pixel từ sprite gốc (Road_Under_Corner), quét xuống dưới màn hình
+    // theo mọi mép viền quay xuống. Texture: hàng trên cùng = sát mép viền, hàng dưới = cuối bóng.
+    [FoldoutGroup("Art"), LabelText("Material thành + bóng viền")]
+    [SerializeField, OnValueChanged(nameof(Build))] private Material curbSideMaterial;   // RoadCurbSide.mat
+    [FoldoutGroup("Art"), LabelText("Dài thành + bóng (px)"), Tooltip("= số hàng pixel của texture (72) để giữ đúng tỉ lệ art gốc.")]
+    [SerializeField, Min(0f), OnValueChanged(nameof(Build))] private float curbSideLength = 72f;
+
     // ---------- Board (phần bên trong) ----------
     [FoldoutGroup("Board"), LabelText("Số cột")]
     [SerializeField, Min(1), OnValueChanged(nameof(BuildBoard))] private int columnCount = 3;
@@ -65,8 +83,9 @@ public class RoadLoopBuilder : MonoBehaviour
     [SerializeField, Min(10f), OnValueChanged(nameof(BuildBoard))] private float columnWidth = 380f;
     [FoldoutGroup("Board"), LabelText("Space X (px)"), Tooltip("Khoảng cách giữa 2 cột liền nhau. Vạch chia nằm giữa khoảng này.")]
     [SerializeField, Min(0f), OnValueChanged(nameof(BuildBoard))] private float columnSpacingX = 120f;
-    [FoldoutGroup("Board"), LabelText("Lề trên/dưới cột (px)")]
-    [SerializeField, Min(0f), OnValueChanged(nameof(BuildBoard))] private float columnPaddingY = 120f;
+    [FoldoutGroup("Board"), LabelText("Cột ngắn hơn chấm xanh (px)")]
+    [Tooltip("Đầu/cuối cột bám theo độ cao 2 điểm đầu/cuối viền trong (chấm xanh lá), rồi ngắn vào thêm khoảng này.")]
+    [SerializeField, Min(0f), OnValueChanged(nameof(BuildBoard))] private float columnPaddingY = 40f;
     [FoldoutGroup("Board"), LabelText("Dày vạch chia (px)")]
     [SerializeField, Min(0f), OnValueChanged(nameof(BuildBoard))] private float dividerWidth = 22f;
     [FoldoutGroup("Board")][SerializeField] private Sprite boardSprite;      // asphalt-texture_0
@@ -120,13 +139,15 @@ public class RoadLoopBuilder : MonoBehaviour
 
         var outer = new MeshData();
         float dIn = OuterColEdge - OuterColIn, dOut = OuterColEdge - OuterColOut;
-        AddStrip(outer, stations, dOut, dIn, OuterColOut, OuterColIn, seg => seg != SegBottomMid);
+        AddStrip(outer, stations, dOut, dIn, OuterUvOut, OuterUvIn, seg => seg != SegBottomMid);
         AddOpeningCaps(outer);
-        CreateMesh(root, "Curb-Outer", outer, 2);
 
         var inner = new MeshData();
         AddInnerCurbs(inner);
-        CreateMesh(root, "Curb-Inner", inner, 2);
+
+        // Thứ tự: asphalt 0 → bóng 1 → thành 2 → mặt viền 3.
+        CreateRaised(root, "Curb-Outer", outer);
+        CreateRaised(root, "Curb-Inner", inner);
 
         BuildLane(stations);
         PlaceDashes(root);
@@ -242,6 +263,22 @@ public class RoadLoopBuilder : MonoBehaviour
         public readonly List<Vector2> UV = new();
         public readonly List<int> Tri = new();
 
+        // Mép biên (local) + 1 điểm nằm phía trong hình — để dựng dải thành bên/bóng của viền.
+        public readonly List<Vector3> EdgeA = new(), EdgeB = new(), EdgeIn = new();
+
+        public void Edge(Vector3 a, Vector3 b, Vector3 inside)
+        {
+            EdgeA.Add(a); EdgeB.Add(b); EdgeIn.Add(inside);
+        }
+
+        /// <summary>Quad dải: cạnh a→d và b→c là 2 mép biên dọc theo dải.</summary>
+        public void StripQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector2 ua, Vector2 ub, Vector2 uc, Vector2 ud)
+        {
+            Quad(a, b, c, d, ua, ub, uc, ud);
+            Edge(a, d, (b + c) * 0.5f);
+            Edge(b, c, (a + d) * 0.5f);
+        }
+
         public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector2 ua, Vector2 ub, Vector2 uc, Vector2 ud)
         {
             int i = V.Count;
@@ -307,7 +344,7 @@ public class RoadLoopBuilder : MonoBehaviour
                     Sample(d1, seg, tc, out Vector2 p11, out _);
                     Sample(d0, seg, tc, out Vector2 p01, out _);
 
-                    m.Quad(ToLocal(p00), ToLocal(p10), ToLocal(p11), ToLocal(p01),
+                    m.StripQuad(ToLocal(p00), ToLocal(p10), ToLocal(p11), ToLocal(p01),
                         Uv(col0, row0), Uv(col1, row0), Uv(col1, row1), Uv(col0, row1));
 
                     pos = t1 >= 1f ? pos + (t1 - t0) * len : 0f;
@@ -333,6 +370,7 @@ public class RoadLoopBuilder : MonoBehaviour
             Vector2 p0 = c + (dir * Mathf.Cos(a0) + side * Mathf.Sin(a0)) * radius;
             Vector2 p1 = c + (dir * Mathf.Cos(a1) + side * Mathf.Sin(a1)) * radius;
             m.Tri3(ToLocal(c), ToLocal(p0), ToLocal(p1), uc, ur, ur);
+            m.Edge(ToLocal(p0), ToLocal(p1), ToLocal(c));
         }
     }
 
@@ -341,15 +379,16 @@ public class RoadLoopBuilder : MonoBehaviour
         float dc = OuterColEdge - OuterColCenter;
         float y = H - dc;
         float xo = OpeningHalf;
-        AddCap(m, new Vector2(xo, y), Vector2.left, CapRadius, OuterColCenter, OuterColOut);
-        AddCap(m, new Vector2(-xo, y), Vector2.right, CapRadius, OuterColCenter, OuterColOut);
+        AddCap(m, new Vector2(xo, y), Vector2.left, CapRadius, OuterColCenter, OuterUvOut);
+        AddCap(m, new Vector2(-xo, y), Vector2.right, CapRadius, OuterColCenter, OuterUvOut);
     }
 
     // ---- Viền trong: chạy dọc theo đường bao (nửa phải, bên trái đối xứng) ----
 
-    private const float InnerDOut = RoadWidth + (InnerColEdge - InnerColOut);       // phía bàn chơi
-    private const float InnerDIn = RoadWidth - (InnerColIn - InnerColEdge);         // phía mặt đường
-    private const float InnerDCenter = RoadWidth - (InnerColCenter - InnerColEdge);
+    private float RoadWidth => Mathf.Clamp(roadWidth, MinRoadWidth, Mathf.Max(MinRoadWidth, Mathf.Min(A, H * 0.5f) - 60f));
+    private float InnerDOut => RoadWidth + (InnerColEdge - InnerColOut);       // phía bàn chơi
+    private float InnerDIn => RoadWidth - (InnerColIn - InnerColEdge);         // phía mặt đường
+    private float InnerDCenter => RoadWidth - (InnerColCenter - InnerColEdge);
     private const float InnerMinLength = 60f;
 
     private struct PathSpan
@@ -437,8 +476,8 @@ public class RoadLoopBuilder : MonoBehaviour
                 Sample(InnerDOut, sp.Seg, tb, out Vector2 p01, out _);
                 float r0 = RowStart + pos, r1 = r0 + (e - s);
 
-                right.Quad(ToLocal(p00), ToLocal(p10), ToLocal(p11), ToLocal(p01),
-                    Uv(InnerColOut, r0), Uv(InnerColIn, r0), Uv(InnerColIn, r1), Uv(InnerColOut, r1));
+                right.StripQuad(ToLocal(p00), ToLocal(p10), ToLocal(p11), ToLocal(p01),
+                    Uv(InnerUvOut, r0), Uv(InnerUvIn, r0), Uv(InnerUvIn, r1), Uv(InnerUvOut, r1));
                 s = e;
             }
         }
@@ -456,7 +495,7 @@ public class RoadLoopBuilder : MonoBehaviour
         Locate(spans, s, out int seg, out float t);
         Sample(InnerDCenter, seg, t, out Vector2 p, out Vector2 n);
         Vector2 tangent = new Vector2(-n.y, n.x); // chiều kim đồng hồ trong hệ y xuống
-        AddCap(m, p, tangent * forward, InnerCapRadius, InnerColCenter, InnerColOut);
+        AddCap(m, p, tangent * forward, InnerCapRadius, InnerColCenter, InnerUvOut);
     }
 
     private static void AppendMirrored(MeshData dst, MeshData src, bool mirror)
@@ -465,6 +504,36 @@ public class RoadLoopBuilder : MonoBehaviour
         foreach (Vector3 v in src.V) dst.V.Add(mirror ? new Vector3(-v.x, v.y, v.z) : v);
         dst.UV.AddRange(src.UV);
         foreach (int i in src.Tri) dst.Tri.Add(i + offset);
+        for (int i = 0; i < src.EdgeA.Count; i++)
+            dst.Edge(Mirror(src.EdgeA[i], mirror), Mirror(src.EdgeB[i], mirror), Mirror(src.EdgeIn[i], mirror));
+    }
+
+    private static Vector3 Mirror(Vector3 v, bool mirror) => mirror ? new Vector3(-v.x, v.y, v.z) : v;
+
+    /// <summary>
+    /// Viền nổi: mặt viền (order 3) + dải thành bên/bóng (order 2). Dải được quét thẳng xuống dưới màn hình
+    /// từ từng mép biên quay xuống của viền, UV dọc theo texture RoadCurbSide → đúng pixel art gốc.
+    /// </summary>
+    private void CreateRaised(Transform root, string name, MeshData top)
+    {
+        if (curbSideMaterial != null && curbSideLength > 0f)
+        {
+            var side = new MeshData();
+            Vector3 off = new Vector3(0f, -curbSideLength * PxToUnit, 0f);
+            for (int i = 0; i < top.EdgeA.Count; i++)
+            {
+                Vector3 a = top.EdgeA[i], b = top.EdgeB[i];
+                Vector3 e = b - a;
+                if (e.sqrMagnitude < 1e-10f) continue;
+                Vector3 n = new Vector3(e.y, -e.x, 0f).normalized;
+                if (Vector3.Dot(n, (a + b) * 0.5f - top.EdgeIn[i]) < 0f) n = -n; // pháp tuyến hướng ra ngoài viền
+                if (n.y > -1e-4f) continue;                                       // chỉ mép quay xuống mới thấy thành
+                side.Quad(a, b, b + off, a + off,
+                    new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            }
+            CreateMesh(root, name + "-Side", side, 2, curbSideMaterial);
+        }
+        CreateMesh(root, name, top, 3);
     }
 
     private void CreateMesh(Transform parent, string name, MeshData data, int order, Material material = null)
@@ -492,16 +561,13 @@ public class RoadLoopBuilder : MonoBehaviour
     // ================= LÀN + VẠCH ĐỨT =================
 
     private readonly List<Vector2> _lanePx = new();
+    private readonly List<Vector2> _dashPx = new();
 
     private void BuildLane(List<Station> st)
     {
-        _lanePx.Clear();
         _lane.Clear();
-        foreach (Station s in st)
-        {
-            Sample(LaneInset, s.Seg, s.T, out Vector2 p, out _);
-            if (_lanePx.Count == 0 || Vector2.Distance(_lanePx[^1], p) > 0.5f) _lanePx.Add(p);
-        }
+        SamplePath(st, LaneCenter, _lanePx);
+        SamplePath(st, LaneCenter, _dashPx);
 
         foreach (Vector2 p in _lanePx)
         {
@@ -510,18 +576,31 @@ public class RoadLoopBuilder : MonoBehaviour
         }
     }
 
+    private void SamplePath(List<Station> st, float d, List<Vector2> dst)
+    {
+        dst.Clear();
+        foreach (Station s in st)
+        {
+            Sample(d, s.Seg, s.T, out Vector2 p, out _);
+            if (dst.Count == 0 || Vector2.Distance(dst[^1], p) > 0.5f) dst.Add(p);
+        }
+    }
+
     private void PlaceDashes(Transform root)
     {
-        if (dash == null || _lanePx.Count < 2) return;
+        if (dash == null || _dashPx.Count < 2) return;
 
         var parent = new GameObject("Dashes").transform;
         parent.SetParent(root, false);
 
+        // Sprite dọc (cao > rộng) → trục dài là Y, xoay thêm -90° để nằm dọc theo đường.
+        float spriteAngle = dash.rect.height > dash.rect.width ? -90f : 0f;
+
         float carried = dashPeriod * 0.5f;
-        for (int i = 0; i < _lanePx.Count; i++)
+        for (int i = 0; i < _dashPx.Count; i++)
         {
-            Vector2 a = _lanePx[i];
-            Vector2 b = _lanePx[(i + 1) % _lanePx.Count];
+            Vector2 a = _dashPx[i];
+            Vector2 b = _dashPx[(i + 1) % _dashPx.Count];
             float len = Vector2.Distance(a, b);
             Vector2 dir = (b - a) / Mathf.Max(len, 0.0001f);
 
@@ -531,7 +610,7 @@ public class RoadLoopBuilder : MonoBehaviour
                 var go = new GameObject("Dash");
                 go.transform.SetParent(parent, false);
                 go.transform.localPosition = ToLocal(p);
-                go.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(-dir.y, dir.x) * Mathf.Rad2Deg);
+                go.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(-dir.y, dir.x) * Mathf.Rad2Deg + spriteAngle);
                 go.transform.localScale = Vector3.one * (dash.pixelsPerUnit * PxToUnit * dashScale);
                 var sr = go.AddComponent<SpriteRenderer>();
                 sr.sprite = dash;
@@ -550,13 +629,35 @@ public class RoadLoopBuilder : MonoBehaviour
     private float BoardTop => RoadWidth;
     private float BoardBottom => H - RoadWidth;
     private float ColumnsTotalWidth => columnCount * columnWidth + (columnCount - 1) * columnSpacingX;
-    private float ColumnHeight => Mathf.Max(0f, BoardBottom - BoardTop - 2f * columnPaddingY);
+
+    // Đầu/cuối cột bám theo độ cao 2 điểm đầu/cuối viền trong (chấm xanh lá), ngắn vào thêm columnPaddingY.
+    private float InnerEndY(bool first)
+    {
+        List<PathSpan> spans = InnerPath(out float total);
+        InnerRange(total, out float a, out float b);
+        Locate(spans, first ? a : b, out int seg, out float t);
+        Sample(InnerDCenter, seg, t, out Vector2 p, out _);
+        return p.y;
+    }
+
+    private float ColumnTop
+    {
+        get
+        {
+            float top = Mathf.Max(BoardTop, InnerEndY(true)) + columnPaddingY;
+            float bot = Mathf.Min(BoardBottom, InnerEndY(false)) - columnPaddingY;
+            return top <= bot ? top : (top + bot) * 0.5f;
+        }
+    }
+
+    private float ColumnBottom => Mathf.Max(ColumnTop, Mathf.Min(BoardBottom, InnerEndY(false)) - columnPaddingY);
+    private float ColumnHeight => ColumnBottom - ColumnTop;
 
     /// <summary>Tâm cột i (local, unit).</summary>
     public Vector3 GetColumnCenter(int i)
     {
         float x = -ColumnsTotalWidth * 0.5f + columnWidth * 0.5f + i * (columnWidth + columnSpacingX);
-        return ToLocal(new Vector2(x, (BoardTop + BoardBottom) * 0.5f));
+        return ToLocal(new Vector2(x, (ColumnTop + ColumnBottom) * 0.5f));
     }
 
     public int ColumnCount => columnCount;
@@ -595,8 +696,8 @@ public class RoadLoopBuilder : MonoBehaviour
         var parent = new GameObject("Arrows").transform;
         parent.SetParent(root, false);
 
-        float y0 = BoardTop + columnPaddingY + columnArrowInset;    // px, y xuống
-        float y1 = BoardBottom - columnPaddingY - columnArrowInset;
+        float y0 = ColumnTop + columnArrowInset;    // px, y xuống
+        float y1 = ColumnBottom - columnArrowInset;
         Material mat = columnArrowMaterial != null ? columnArrowMaterial : dashMaterial;
 
         for (int i = 0; i < columnCount; i++)
@@ -647,7 +748,7 @@ public class RoadLoopBuilder : MonoBehaviour
         {
             Station a = st[i];
             Station b = i + 1 < st.Count ? st[i + 1] : st[0];
-            const float d = RoadWidth - 8f; // luồn dưới mép đường vài px, tránh khe hở
+            float d = RoadWidth - 8f; // luồn dưới mép đường vài px, tránh khe hở
             Sample(d, a.Seg, a.T, out Vector2 pa, out _);
             Sample(d, a.Seg, b.Seg == a.Seg ? b.T : 1f, out Vector2 pb, out _);
             if ((pa - pb).sqrMagnitude < 0.01f) continue;
@@ -663,9 +764,18 @@ public class RoadLoopBuilder : MonoBehaviour
         if (columnCount < 2 || dividerWidth <= 0f) return;
 
         var m = new MeshData();
-        float y0 = BoardTop + columnPaddingY, y1 = BoardBottom - columnPaddingY;
-        Vector2 uv = Uv(DividerCol, CapRow);
+        float y0 = ColumnTop, y1 = ColumnBottom;
         float half = dividerWidth * 0.5f;
+
+        // Màu + độ mờ giống mũi tên: lấy texel ở thân tam giác (cùng atlas với roadMaterial).
+        Vector2 uv;
+        if (columnArrow != null && columnArrow.texture == roadMaterial.mainTexture)
+        {
+            Rect ar = columnArrow.textureRect;
+            Texture at = columnArrow.texture;
+            uv = new Vector2((ar.x + ar.width * 0.5f) / at.width, (ar.y + ar.height * 0.7f) / at.height);
+        }
+        else uv = Uv(DividerCol, CapRow);
 
         for (int i = 0; i < columnCount - 1; i++)
         {
@@ -772,6 +882,61 @@ public class RoadLoopBuilder : MonoBehaviour
         InnerRange(total, out float s0, out float s1);
         if (first) innerCurbStart = Mathf.Clamp(bestS, 0f, s1 - InnerMinLength);
         else innerCurbEnd = Mathf.Clamp(bestS, s0 + InnerMinLength, total);
+    }
+
+    // ---- Làn xe = phần mặt đường lộ ra giữa 2 viền; 2 chấm ở giữa cạnh phải, kéo ngang ----
+    // Chấm ngoài: nới mép ngoài ra (tăng kích thước vòng + bề rộng đường, bàn giữ nguyên).
+    // Chấm trong: nới mép trong vào (tăng bề rộng đường, bàn thu nhỏ).
+    private float LaneOuter => OuterColEdge - OuterColIn;                 // mép trong viền ngoài
+    private float LaneInner => RoadWidth - (InnerColIn - InnerColEdge);   // mép phía đường của viền trong
+    private float LaneCenter => (LaneOuter + LaneInner) * 0.5f;
+    public float RoadWidthPx => RoadWidth;
+
+    /// <summary>Bề rộng làn (unit local).</summary>
+    public float LaneWidth => (LaneInner - LaneOuter) * PxToUnit;
+    public float LaneOuterPx => LaneOuter;
+    public float LaneInnerPx => LaneInner;
+
+    /// <summary>Mép làn (local) để vẽ trong editor. outer = true: mép ngoài.</summary>
+    public List<Vector3> GetLaneEdge(bool outer)
+    {
+        var list = new List<Vector3>();
+        float d = outer ? LaneOuter : LaneInner;
+        foreach (Station s in BuildStations())
+        {
+            Sample(d, s.Seg, s.T, out Vector2 p, out _);
+            list.Add(transform.TransformPoint(ToLocal(p)));
+        }
+        return list;
+    }
+
+    public Vector3 GetLaneHandle(bool outer)
+    {
+        Sample(outer ? LaneOuter : LaneInner, SegRight, 0.5f, out Vector2 p, out _);
+        return transform.TransformPoint(ToLocal(p));
+    }
+
+    public Vector3 GetLaneHandleDirection() => transform.TransformDirection(Vector3.right);
+
+    public void SetLaneHandle(bool outer, Vector3 world)
+    {
+        Vector2 p = FromLocal(transform.InverseTransformPoint(world));
+        float d = A - p.x; // vị trí mới, tính từ mép ngoài hiện tại
+
+        if (outer)
+        {
+            // Mép ngoài dời ra δ: vòng to thêm δ mỗi phía, đường rộng thêm δ → mép trong (bàn) đứng yên.
+            float delta = Mathf.Max(LaneOuter - d, MinRoadWidth - RoadWidth);
+            outerHalfWidth += delta;
+            outerHeight += 2f * delta;
+            cornerRadius += delta;
+            roadWidth = RoadWidth + delta;
+        }
+        else
+        {
+            roadWidth = d + (InnerColIn - InnerColEdge);
+            roadWidth = RoadWidth; // kẹp
+        }
     }
 
     // px, y xuống
