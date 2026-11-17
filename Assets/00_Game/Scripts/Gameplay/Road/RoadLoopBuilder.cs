@@ -103,10 +103,22 @@ public class RoadLoopBuilder : MonoBehaviour
     private const string BoardName = "Board";
     private const float DividerCol = 56.5f; // tâm viền trong của profile → màu viền phẳng
 
-    private readonly List<Vector2> _lane = new();
+    [SerializeField, HideInInspector] private List<Vector2> _lane = new(); // lưu vào scene để dùng lúc Play
 
     /// <summary>Tâm làn (local, unit) theo chiều kim đồng hồ — dùng làm đường chạy cho xe.</summary>
     public IReadOnlyList<Vector2> Lane => _lane;
+
+    /// <summary>
+    /// Đường chạy xe (world), theo chiều KIM ĐỒNG HỒ trên màn hình (trên → phải ↓ → dưới ← → trái ↑).
+    /// Nếu chưa có (chưa Build) thì tự tính lại, không dựng mesh.
+    /// </summary>
+    public List<Vector3> GetLaneWorld()
+    {
+        if (_lane.Count < 2) BuildLane(BuildStations());
+        var list = new List<Vector3>(_lane.Count);
+        foreach (Vector2 p in _lane) list.Add(transform.TransformPoint(p));
+        return list;
+    }
 
     public float CornerRadius => Radius;
     public float BottomOpeningWidth => 2f * OpeningHalf;
