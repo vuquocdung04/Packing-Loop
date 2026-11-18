@@ -19,7 +19,6 @@ public class ColumnTapController : MonoBehaviour
     [SerializeField, Required] private RoadLoopBuilder road;
 
     [BoxGroup("Chạy"), LabelText("Tốc độ tối đa (unit/s)"), SerializeField] private float speed = 12f;
-    [BoxGroup("Chạy"), LabelText("Tăng tốc (unit/s²)"), SerializeField] private float accel = 30f;
     [BoxGroup("Chạy"), LabelText("Phanh (unit/s²)"), SerializeField] private float brake = 60f;
     [BoxGroup("Chạy"), LabelText("Tốc độ xoay (độ/s)"), SerializeField] private float turnSpeed = 720f;
     [BoxGroup("Chạy"), LabelText("Bán kính cua"), SerializeField] private float turnRadius = 1.2f;
@@ -123,7 +122,7 @@ public class ColumnTapController : MonoBehaviour
 
             string color = ColorOf(r);
             var car = pivot.gameObject.AddComponent<RoadCar>();
-            car.Setup(color, speed, turnSpeed, accel, brake, _carLen, _carWidth);
+            car.Setup(color, speed, turnSpeed, brake, _carLen, _carWidth);
 
             Column col = _cols[e.c];
             col.Cars.Add(pivot);

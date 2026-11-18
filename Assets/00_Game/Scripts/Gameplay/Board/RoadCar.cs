@@ -7,7 +7,7 @@ using UnityEngine;
 /// - Exiting / Entering: chạy hết 1 polyline rồi gọi callback (ra khỏi cột, rẽ vào cột).
 /// - Looping: chạy vòng liên tục trên lane; mỗi khi tới 1 điểm lane thì hỏi controller (có thể rẽ vào cột).
 ///
-/// Cảm giác lái: tốc độ có gia tốc; phanh theo khoảng trống phía trước (v ≤ √(2·phanh·khoảng trống)) nên
+/// Cảm giác lái: chạy max tốc ngay (không gia tốc); phanh theo khoảng trống phía trước (v ≤ √(2·phanh·khoảng trống)) nên
 /// tới sát xe trước thì chậm dần rồi dừng êm, xe trước đi thì bám đuôi luôn.
 /// Vạch chờ (hold): path có thể có 1 điểm chờ; trước điểm đó, nếu controller báo chưa nhập làn được
 /// thì xe phanh dừng tại vạch, được phép là đi tiếp ngay.
@@ -28,7 +28,7 @@ public class RoadCar : MonoBehaviour
     public int LaneIndex => _laneIdx;
     public float Speed => _v;
 
-    private float _maxSpeed, _turnSpeed, _accel, _brake, _length, _width;
+    private float _maxSpeed, _turnSpeed, _brake, _length, _width;
     private float _v;
 
     private List<Vector3> _path;
@@ -44,12 +44,11 @@ public class RoadCar : MonoBehaviour
     public float SafeDist => _length * 1.12f;    // tâm-tâm tối thiểu theo hướng đi (khe ~12% thân xe)
     private float SideDist => _width * 0.9f;     // lệch ngang dưới mức này = cùng làn → chắn
 
-    public void Setup(string colorKey, float maxSpeed, float turnSpeed, float accel, float brake, float length, float width)
+    public void Setup(string colorKey, float maxSpeed, float turnSpeed, float brake, float length, float width)
     {
         ColorKey = colorKey;
         _maxSpeed = maxSpeed;
         _turnSpeed = turnSpeed;
-        _accel = accel;
         _brake = brake;
         _length = length;
         _width = width;
@@ -181,10 +180,9 @@ public class RoadCar : MonoBehaviour
         if (Mode == State.Parked) return;
         float dt = Time.deltaTime;
 
-        // Tốc độ: tăng dần tới max, nhưng không vượt tốc độ còn phanh kịp trong khoảng trống.
+        // Tốc độ: chạy max ngay (không gia tốc), chỉ giảm khi cần phanh kịp trong khoảng trống.
         float free = FreeDistance();
-        float target = Mathf.Min(_maxSpeed, Mathf.Sqrt(2f * _brake * free));
-        _v = target > _v ? Mathf.MoveTowards(_v, target, _accel * dt) : target;
+        _v = Mathf.Min(_maxSpeed, Mathf.Sqrt(2f * _brake * free));
         float move = Mathf.Min(_v * dt, free);
 
         for (int guard = 0; move > 0f && guard < 64; guard++)
