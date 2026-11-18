@@ -122,6 +122,8 @@ public class RoadLoopBuilder : MonoBehaviour
 
     public float CornerRadius => Radius;
     public float BottomOpeningWidth => 2f * OpeningHalf;
+    /// <summary>Nửa bề rộng lối mở đáy road (world unit).</summary>
+    public float BottomOpeningHalfWorld => OpeningHalf * PxToUnit * transform.lossyScale.x;
 
     private float A => outerHalfWidth;
     private float H => outerHeight;

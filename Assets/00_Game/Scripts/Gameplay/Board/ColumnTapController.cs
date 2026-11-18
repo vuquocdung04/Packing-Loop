@@ -17,12 +17,24 @@ using UnityEngine.InputSystem;
 public class ColumnTapController : MonoBehaviour
 {
     [SerializeField, Required] private RoadLoopBuilder road;
+    [Tooltip("Khu cột dưới (giữa 2 bãi cỏ). Tap cột dưới → xe đầu hàng chạy lên, qua lối mở đáy road rồi nhập làn.")]
+    [SerializeField] private ColumnAreaBuilder lot;
+    [BoxGroup("Nhập làn"), LabelText("Lề lối mở đáy road (unit)"), Tooltip("Xe từ khu dưới đi vào lối mở, cách mép lối mở ít nhất khoảng này.")]
+    [SerializeField] private float lotOpeningMargin = 0.15f;
 
     [BoxGroup("Chạy"), LabelText("Tốc độ tối đa (unit/s)"), SerializeField] private float speed = 12f;
     [BoxGroup("Chạy"), LabelText("Phanh (unit/s²)"), SerializeField] private float brake = 60f;
     [BoxGroup("Chạy"), LabelText("Tốc độ xoay (độ/s)"), SerializeField] private float turnSpeed = 720f;
     [BoxGroup("Chạy"), LabelText("Bán kính cua"), SerializeField] private float turnRadius = 1.2f;
-    [BoxGroup("Chạy"), LabelText("Thời gian dồn xe (s)"), SerializeField] private float shiftTime = 0.2f;
+    [BoxGroup("Dồn xe"), LabelText("Tốc độ tối đa (unit/s)"), SerializeField] private float shiftSpeed = 9f;
+    [BoxGroup("Dồn xe"), LabelText("Tăng tốc (unit/s²)"), SerializeField] private float shiftAccel = 45f;
+    [BoxGroup("Dồn xe"), LabelText("Phanh (unit/s²)"), SerializeField] private float shiftBrake = 35f;
+    [BoxGroup("Dồn xe"), LabelText("Xe sau khởi động trễ (s)"), Tooltip("Hiệu ứng domino: xe phía sau bắt đầu chạy trễ hơn xe trước khoảng này.")]
+    [SerializeField] private float shiftStagger = 0.05f;
+    [BoxGroup("Dồn xe"), LabelText("Khe với xe vừa ra (× dài xe)"), Tooltip("Xe đầu hàng bám theo xe vừa ra, giữ khe tối thiểu này (tâm-tâm = dài xe × (1 + khe)).")]
+    [SerializeField] private float shiftFollowGap = 0.08f;
+    [BoxGroup("Dồn xe"), LabelText("Chúi/ngửa thân (độ)"), Tooltip("Tăng tốc → ngửa, phanh → chúi mũi. 0 = tắt.")]
+    [SerializeField] private float shiftTilt = 4f;
 
     [BoxGroup("Nhập làn"), LabelText("Vạch chờ cách mép làn (× rộng xe)")]
     [Tooltip("Mũi xe dừng cách mép làn khoảng này khi đang có xe chạy qua.")]
@@ -46,7 +58,11 @@ public class ColumnTapController : MonoBehaviour
         public readonly List<RoadCar> Leaving = new();     // xe vừa ra, chưa rời hẳn ô dưới cùng
         public readonly List<Vector3> Slots = new();       // vị trí pivot từng ô, 0 = dưới cùng
         public Coroutine Shift;
+        public readonly Dictionary<Transform, float> ShiftV = new(); // vận tốc dồn hiện tại (giữ khi dồn bị khởi động lại)
+        public readonly Dictionary<Transform, float> ShiftPitch = new(); // góc chúi/ngửa hiện tại
         public bool Clearing;                               // đang chạy animation biến mất
+        public bool IsLot;                                  // cột khu dưới: chỉ cho xe ra, xe đi lên (+Z)
+        public float ExitSign = -1f;                        // hướng Z xe rời cột (board: xuống, lot: lên)
 
         public int Capacity => Slots.Count;
         public int Reserved => Cars.Count + Incoming.Count;
@@ -73,7 +89,8 @@ public class ColumnTapController : MonoBehaviour
     }
 
     private readonly List<Column> _cols = new();
-    private List<Vector3> _lane;                                   // world, ngược chiều kim đồng hồ
+    private readonly List<Column> _lotCols = new();
+    private List<Vector3> _lane;                                  // world, ngược chiều kim đồng hồ
     private float[] _laneS;                                        // quãng đường tích luỹ tới từng điểm lane
     private float _laneLen;
     private readonly Dictionary<int, int> _entryAt = new();        // chỉ số lane → cột rẽ vào
@@ -90,11 +107,25 @@ public class ColumnTapController : MonoBehaviour
     private void CollectCars()
     {
         _cols.Clear();
-        int n = road.ColumnCount;
-        for (int c = 0; c < n; c++) _cols.Add(new Column());
+        _lotCols.Clear();
+        for (int c = 0; c < road.ColumnCount; c++) _cols.Add(new Column());
+        // Board: mũi xuống (-Z), xe 0 = dưới cùng.
+        CollectInto(transform, _cols, Vector3.back, true);
 
+        if (lot != null && lot.CarsRoot != null)
+        {
+            for (int c = 0; c < lot.ColumnCount; c++) _lotCols.Add(new Column { IsLot = true, ExitSign = 1f });
+            // Khu dưới: mũi lên (+Z), xe 0 = trên cùng (đầu hàng).
+            CollectInto(lot.CarsRoot, _lotCols, Vector3.forward, false);
+        }
+    }
+
+    /// <summary>Lấy con tên "Car-{cột}-{thứ tự}" của root, bọc mỗi xe vào pivot ở tâm xe (forward = mũi xe).</summary>
+    private void CollectInto(Transform root, List<Column> cols, Vector3 forward, bool measure)
+    {
+        int n = cols.Count;
         var tmp = new List<(int c, int i, Transform t)>();
-        foreach (Transform t in transform)
+        foreach (Transform t in root)
         {
             string[] parts = t.name.Split('-');
             if (parts.Length < 3 || parts[0] != "Car") continue;
@@ -102,8 +133,8 @@ public class ColumnTapController : MonoBehaviour
         }
         tmp.Sort((a, b) => a.c != b.c ? a.c.CompareTo(b.c) : a.i.CompareTo(b.i));
 
-        // Kích thước xe (đang quay mũi xuống: dài theo Z, rộng theo X).
-        if (tmp.Count > 0 && tmp[0].t.TryGetComponent(out Renderer r0))
+        // Kích thước xe (dài theo Z, rộng theo X).
+        if (measure && tmp.Count > 0 && tmp[0].t.TryGetComponent(out Renderer r0))
         {
             _carLen = r0.bounds.size.z;
             _carWidth = r0.bounds.size.x;
@@ -111,12 +142,11 @@ public class ColumnTapController : MonoBehaviour
 
         foreach (var e in tmp)
         {
-            // Bọc xe vào pivot ở tâm xe, forward = mũi xe (đang quay mũi xuống = -Z world).
             Renderer r = e.t.GetComponent<Renderer>();
             Vector3 center = r != null ? r.bounds.center : e.t.position;
             var pivot = new GameObject(e.t.name).transform;
-            pivot.SetParent(transform, false);
-            pivot.SetPositionAndRotation(center, Quaternion.LookRotation(Vector3.back, Vector3.up));
+            pivot.SetParent(root, false);
+            pivot.SetPositionAndRotation(center, Quaternion.LookRotation(forward, Vector3.up));
             e.t.SetParent(pivot, true);
             e.t.name = "Mesh";
 
@@ -124,11 +154,11 @@ public class ColumnTapController : MonoBehaviour
             var car = pivot.gameObject.AddComponent<RoadCar>();
             car.Setup(color, speed, turnSpeed, brake, _carLen, _carWidth);
 
-            Column col = _cols[e.c];
+            Column col = cols[e.c];
             col.Cars.Add(pivot);
             col.Colors.Add(color);
             col.Slots.Add(center);
-            _carY = center.y;
+            if (measure) _carY = center.y;
         }
     }
 
@@ -203,8 +233,25 @@ public class ColumnTapController : MonoBehaviour
         var plane = new Plane(Vector3.up, new Vector3(0f, road.transform.position.y, 0f));
         if (!plane.Raycast(ray, out float enter)) return;
 
-        int col = ColumnAt(ray.GetPoint(enter));
-        if (col >= 0) Launch(col);
+        Vector3 hit = ray.GetPoint(enter);
+        int col = ColumnAt(hit);
+        if (col >= 0) { Launch(col); return; }
+        col = LotColumnAt(hit);
+        if (col >= 0) LaunchFromLot(col);
+    }
+
+    private int LotColumnAt(Vector3 world)
+    {
+        if (lot == null || _lotCols.Count == 0) return -1;
+        Vector2 size = lot.ColumnSize;
+        float halfW = (size.x + lot.ColumnSpacingX) * 0.5f;
+        float halfH = size.y * 0.5f;
+        for (int c = 0; c < _lotCols.Count; c++)
+        {
+            Vector3 center = lot.GetColumnCenterWorld(c);
+            if (Mathf.Abs(world.x - center.x) <= halfW && Mathf.Abs(world.z - center.z) <= halfH) return c;
+        }
+        return -1;
     }
 
     private int ColumnAt(Vector3 world)
@@ -240,6 +287,95 @@ public class ColumnTapController : MonoBehaviour
 
         col.Leaving.Add(car);
         Compact(c); // chờ xe vừa ra rời ô dưới cùng rồi mới dồn
+    }
+
+    // ================= KHU DƯỚI → ROAD =================
+
+    /// <summary>Xe đầu hàng cột dưới chạy lên, qua lối mở đáy road, chờ ở vạch rồi rẽ phải nhập làn.</summary>
+    private void LaunchFromLot(int c)
+    {
+        Column col = _lotCols[c];
+        if (col.Cars.Count == 0) return;
+
+        Transform pivot = col.Cars[0];
+        col.Cars.RemoveAt(0);
+        col.Colors.RemoveAt(0);
+
+        var car = pivot.GetComponent<RoadCar>();
+        List<Vector3> path = BuildLotExitPath(pivot.position, out int joinIdx, out int holdIdx, out float mergeLen);
+        car.Follow(path, RoadCar.State.Exiting,
+            rc => rc.Loop(_lane, joinIdx, OnLanePoint),
+            holdIdx, rc => CanMerge(rc, joinIdx, mergeLen));
+
+        col.Leaving.Add(car);
+        StartShift(col);
+    }
+
+    /// <summary>
+    /// Đường lên: thẳng lên ra khỏi cột → lượn chữ S vào trong lối mở đáy road → vạch chờ (mũi xe sát mép làn)
+    /// → cua phải vào làn dưới (làn dưới chạy sang phải).
+    /// </summary>
+    private List<Vector3> BuildLotExitPath(Vector3 start, out int joinIdx, out int holdIdx, out float mergeLen)
+    {
+        float y = _carY, R = turnRadius;
+        int n = _lane.Count;
+        var path = new List<Vector3> { start };
+
+        // Lối mở đáy road (world), tâm x = tâm road.
+        float openHalf = road.BottomOpeningHalfWorld;
+        float cx = road.transform.position.x;
+        float lim = Mathf.Max(0f, openHalf - _carWidth * 0.5f - lotOpeningMargin);
+        // Cột nằm trong lối mở thì đi thẳng; cột ngoài nhập chung tuyến với cột gần nhất trong lối mở
+        // (xe nối đuôi nhau, không chen ngang nhau).
+        float xt = Mathf.Clamp(start.x, cx - lim, cx + lim);
+        if (!Mathf.Approximately(xt, start.x))
+        {
+            float bestD = float.MaxValue;
+            for (int c = 0; c < lot.ColumnCount; c++)
+            {
+                float x = lot.GetColumnCenterWorld(c).x;
+                if (Mathf.Abs(x - cx) > lim) continue;
+                float d = Mathf.Abs(x - start.x);
+                if (d < bestD) { bestD = d; xt = x; }
+            }
+        }
+
+        float holdZ = _zBottom - _carWidth * (0.5f + holdGap) - _carLen * 0.5f;
+        float zOut = Mathf.Min(lot.transform.position.z + _carLen * 0.5f + 0.1f, holdZ); // đuôi xe vừa ra khỏi cột
+        if (zOut > start.z) path.Add(new Vector3(start.x, y, zOut));
+        else zOut = start.z;
+
+        if (Mathf.Abs(xt - start.x) > 0.01f && holdZ > zOut)
+        {
+            // Chữ S từ (x cột, zOut) tới (xt, holdZ), 2 đầu đều thẳng đứng.
+            float zm = (zOut + holdZ) * 0.5f;
+            AddCubicBezier(path, new Vector3(start.x, y, zOut), new Vector3(start.x, y, zm),
+                new Vector3(xt, y, zm), new Vector3(xt, y, holdZ), 12);
+        }
+        else path.Add(new Vector3(xt, y, Mathf.Max(holdZ, zOut)));
+        holdIdx = path.Count - 1;
+
+        // Cua phải vào làn.
+        Vector3 corner = new Vector3(xt, y, _zBottom);
+        int k0 = 0;
+        float best = float.MaxValue;
+        for (int i = 0; i < n; i++)
+        {
+            float d = (_lane[i] - corner).sqrMagnitude;
+            if (d < best) { best = d; k0 = i; }
+        }
+        int j = k0;
+        for (float acc = 0f; acc < R; j = (j + 1) % n)
+            acc += Vector3.Distance(_lane[j], _lane[(j + 1) % n]);
+
+        Vector3 a = new Vector3(xt, y, _zBottom - R);
+        if (a.z > path[^1].z) path.Add(a);
+        AddQuadBezier(path, a, corner, _lane[j], 10);
+        joinIdx = (j + 1) % n;
+
+        mergeLen = 0f;
+        for (int i = holdIdx + 1; i < path.Count; i++) mergeLen += Vector3.Distance(path[i - 1], path[i]);
+        return path;
     }
 
     /// <summary>
@@ -350,43 +486,87 @@ public class ColumnTapController : MonoBehaviour
 
     // ================= DỒN XE =================
 
-    private void Compact(int c)
+    private void Compact(int c) => StartShift(_cols[c]);
+
+    private void StartShift(Column col)
     {
-        Column col = _cols[c];
         if (col.Shift != null) StopCoroutine(col.Shift);
         col.Shift = StartCoroutine(ShiftTo(col));
     }
 
+    /// <summary>
+    /// Dồn xe như xe thật chạy: mỗi xe tăng tốc → chạy → phanh êm vào đúng ô của nó.
+    /// Xe đầu hàng bám theo xe vừa ra (giữ khe), xe sau bám xe trước (giữ khoảng cách ô) → không phải chờ
+    /// xe ra rời hẳn ô mới dồn, cũng không đè nhau. Xe sau khởi động trễ chút (domino). Thân xe chúi/ngửa theo gia tốc.
+    /// Tính theo trục dọc cột: s = z × ExitSign (s lớn = phía trước, hướng xe rời cột).
+    /// </summary>
     private IEnumerator ShiftTo(Column col)
     {
-        // Chờ các xe vừa ra rời hẳn ô dưới cùng (đuôi xe qua khỏi mũi ô) → xe sau dồn xuống không đè.
-        if (col.Slots.Count > 0)
+        float sign = col.ExitSign;
+        float S(Vector3 p) => p.z * sign;
+        Quaternion baseRot = Quaternion.LookRotation(Vector3.forward * sign, Vector3.up);
+        float followDist = _carLen * (1f + shiftFollowGap);
+        float exitedAt = col.Slots.Count > 0 ? S(col.Slots[0]) + _carLen * 1.05f : 0f; // xe ra qua mốc này = rời cột
+
+        float elapsed = 0f;
+        while (true)
         {
-            float clearZ = col.Slots[0].z - _carLen * 1.05f;
-            while (true)
+            float dt = Time.deltaTime;
+            elapsed += dt;
+
+            // Xe vừa ra: còn trong vùng cột thì xe đầu hàng phải bám sau nó.
+            col.Leaving.RemoveAll(rc => rc == null || rc.Mode != RoadCar.State.Exiting || S(rc.transform.position) > exitedAt);
+            float frontLimit = float.PositiveInfinity;
+            foreach (RoadCar rc in col.Leaving) frontLimit = Mathf.Min(frontLimit, S(rc.transform.position) - followDist);
+
+            bool busy = col.Leaving.Count > 0;
+            int n = Mathf.Min(col.Cars.Count, col.Slots.Count);
+            for (int i = 0; i < n; i++)
             {
-                col.Leaving.RemoveAll(rc => rc == null || rc.Mode != RoadCar.State.Exiting || rc.transform.position.z < clearZ);
-                if (col.Leaving.Count == 0) break;
-                yield return null;
+                Transform car = col.Cars[i];
+                Vector3 p = car.position;
+                float s = S(p), target = S(col.Slots[i]);
+
+                // Giới hạn phía trước: xe ra (với xe đầu) hoặc xe ngay trước (giữ đúng khoảng cách 2 ô).
+                float limit = i == 0 ? frontLimit
+                    : S(col.Cars[i - 1].position) - (S(col.Slots[i - 1]) - target);
+                float goal = Mathf.Min(target, limit);
+                float dist = goal - s;
+
+                col.ShiftV.TryGetValue(car, out float v);
+                float v0 = v;
+                bool started = v > 0f || elapsed >= i * shiftStagger;
+                if (dist <= 1e-4f || !started) v = 0f;
+                else v = Mathf.Min(v + shiftAccel * dt, shiftSpeed, Mathf.Sqrt(2f * shiftBrake * dist));
+
+                float step = Mathf.Min(v * dt, Mathf.Max(0f, dist));
+                if (step > 0f) car.position = p + Vector3.forward * (sign * step);
+                if (dist - step <= 1e-4f && goal >= target) { car.position = col.Slots[i]; v = 0f; }
+                col.ShiftV[car] = v;
+
+                // Chúi/ngửa: tăng tốc → ngửa (mũi lên), phanh → chúi; mượt dần, dừng thì nhún về 0.
+                float a = dt > 0f ? (v - v0) / dt : 0f;
+                float norm = a >= 0f ? a / Mathf.Max(0.01f, shiftAccel) : a / Mathf.Max(0.01f, shiftBrake);
+                float pitchGoal = -Mathf.Clamp(norm, -1f, 1f) * shiftTilt;
+                col.ShiftPitch.TryGetValue(car, out float pitch);
+                pitch = Mathf.Lerp(pitch, pitchGoal, 1f - Mathf.Exp(-18f * dt));
+                if (Mathf.Abs(pitch) < 0.02f && Mathf.Abs(pitchGoal) < 0.02f) pitch = 0f;
+                col.ShiftPitch[car] = pitch;
+                car.rotation = baseRot * Quaternion.AngleAxis(pitch, Vector3.right);
+
+                if (v > 0f || pitch != 0f || (car.position - col.Slots[i]).sqrMagnitude > 1e-6f) busy = true;
             }
-        }
 
-        var cars = new List<Transform>(col.Cars);
-        var from = new List<Vector3>();
-        foreach (Transform t in cars) from.Add(t.position);
-
-        for (float t0 = 0f; t0 < shiftTime; t0 += Time.deltaTime)
-        {
-            float k = Mathf.SmoothStep(0f, 1f, t0 / shiftTime);
-            for (int i = 0; i < cars.Count && i < col.Slots.Count; i++)
-                cars[i].position = Vector3.Lerp(from[i], col.Slots[i], k);
+            if (!busy) break;
             yield return null;
         }
-        for (int i = 0; i < cars.Count && i < col.Slots.Count; i++) cars[i].position = col.Slots[i];
+
+        col.ShiftV.Clear();
+        col.ShiftPitch.Clear();
         col.Shift = null;
 
         // Xe cuối đã vào chỗ và cả cột 1 màu → biến mất.
-        if (!col.Clearing && col.Incoming.Count == 0 && col.FullOneColor)
+        if (!col.IsLot && !col.Clearing && col.Incoming.Count == 0 && col.FullOneColor)
             StartCoroutine(ClearColumn(col));
     }
 
@@ -462,6 +642,15 @@ public class ColumnTapController : MonoBehaviour
             main.startColor = new Color(tint.r, tint.g, tint.b, c.a);
             ps.Clear(true);
             ps.Play(true);
+        }
+    }
+
+    private static void AddCubicBezier(List<Vector3> path, Vector3 p0, Vector3 c0, Vector3 c1, Vector3 p1, int steps)
+    {
+        for (int i = 1; i <= steps; i++)
+        {
+            float t = i / (float)steps, u = 1f - t;
+            path.Add(u * u * u * p0 + 3f * u * u * t * c0 + 3f * u * t * t * c1 + t * t * t * p1);
         }
     }
 

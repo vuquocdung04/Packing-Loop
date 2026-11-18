@@ -45,9 +45,16 @@ public class ColumnAreaBuilder : MonoBehaviour
     [FoldoutGroup("Art"), LabelText("Nền luồn dưới cỏ (unit)"), Tooltip("Nền kéo dài thêm vào dưới 2 bãi cỏ để bóng của cỏ đổ lên asphalt, không hở khe.")]
     [SerializeField, Min(0f), OnValueChanged(nameof(Build))] private float fillExtendX = 0.3f;
 
+    [BoxGroup("Xe trong cột"), LabelText("Gốc xe"), Tooltip("Chứa các xe tên \"Car-{cột}-{hàng}\" (hàng 0 = trên cùng).")]
+    [SerializeField, OnValueChanged(nameof(LayoutCars))] private Transform carsRoot;
+    [BoxGroup("Xe trong cột"), LabelText("Space Y (unit)"), Tooltip("Khoảng hở giữa 2 xe liền nhau theo chiều dọc.")]
+    [SerializeField, OnValueChanged(nameof(LayoutCars))] private float carSpacingY = 0.85f;
+
     // ================= LAYOUT =================
 
     public int ColumnCount => columnCount;
+    public Transform CarsRoot => carsRoot;
+    public float ColumnSpacingX => columnSpacingX;
 
     /// <summary>Kích thước 1 cột (local unit) — rộng đã dãn theo bề rộng vùng.</summary>
     public Vector2 ColumnSize => new(ColumnWidth, columnHeight);
@@ -102,6 +109,42 @@ public class ColumnAreaBuilder : MonoBehaviour
 
         BuildFill(root);
         BuildDividers(root);
+        LayoutCars();
+    }
+
+    /// <summary>
+    /// Xếp xe trong carsRoot vào cột: giữa cột theo X, hàng 0 sát mép trên, mỗi hàng cách nhau Space Y.
+    /// Không đổi scale xe (giữ cùng cỡ xe trên board).
+    /// Vị trí tính theo bounds renderer nên đúng với mọi hướng xoay của xe.
+    /// </summary>
+    [BoxGroup("Xe trong cột"), Button("Xếp xe")]
+    public void LayoutCars()
+    {
+        if (carsRoot == null) return;
+
+        var cars = new List<(int c, int i, Transform t, Renderer r)>();
+        foreach (Transform t in carsRoot)
+        {
+            string[] parts = t.name.Split('-');
+            if (parts.Length < 3 || parts[0] != "Car") continue;
+            if (!int.TryParse(parts[1], out int c) || !int.TryParse(parts[2], out int i) || c >= columnCount) continue;
+            Renderer r = t.GetComponentInChildren<Renderer>();
+            if (r != null) cars.Add((c, i, t, r));
+        }
+        if (cars.Count == 0) return;
+
+        Vector3 top = transform.position;
+        foreach (var e in cars)
+        {
+#if UNITY_EDITOR
+            if (!Application.isPlaying) UnityEditor.Undo.RecordObject(e.t, "Layout Cars");
+#endif
+            Bounds b = e.r.bounds;
+            float len = b.size.z;
+            float x = GetColumnCenterWorld(e.c).x;
+            float zTop = top.z - e.i * (len + carSpacingY);
+            e.t.position += new Vector3(x - b.center.x, 0f, zTop - b.max.z);
+        }
     }
 
     /// <summary>Nền asphalt lấp kín vùng giữa 2 mép (không trừ lề), cao bằng cột.</summary>
