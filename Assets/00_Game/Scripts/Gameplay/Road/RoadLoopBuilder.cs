@@ -86,6 +86,18 @@ public class RoadLoopBuilder : MonoBehaviour
     [FoldoutGroup("Board"), LabelText("Cột ngắn hơn chấm xanh (px)")]
     [Tooltip("Đầu/cuối cột bám theo độ cao 2 điểm đầu/cuối viền trong (chấm xanh lá), rồi ngắn vào thêm khoảng này.")]
     [SerializeField, Min(0f), OnValueChanged(nameof(BuildBoard))] private float columnPaddingY = 40f;
+    // ---------- Ô trong cột (slot) ----------
+    // Mỗi cột chia thành các ô cỡ 1 xe, căn giữa theo chiều dọc cột. Ô 0 = dưới cùng (phía xe ra).
+    // Ô chỉ là chỗ chứa: bên trong đặt xe, obstacle, ... đều được.
+    [BoxGroup("Ô (slot)"), LabelText("Số ô mỗi cột")]
+    [SerializeField, Min(1)] private int slotsPerColumn = 5;
+    [BoxGroup("Ô (slot)"), LabelText("Cỡ ô (px)"), Tooltip("x = ngang (rộng xe), y = dọc cột (dài xe). Mặc định = cỡ xe hiện tại.")]
+    [SerializeField] private Vector2 slotSize = new(478f, 521f);
+    [BoxGroup("Ô (slot)"), LabelText("Khe giữa 2 ô (px)")]
+    [SerializeField] private float slotGap = 0f;
+    [BoxGroup("Ô (slot)"), LabelText("Gizmo ô")]
+    [SerializeField] private bool drawSlotGizmos = true;
+
     [FoldoutGroup("Board"), LabelText("Dày vạch chia (px)")]
     [SerializeField, Min(0f), OnValueChanged(nameof(BuildBoard))] private float dividerWidth = 22f;
     [FoldoutGroup("Board")][SerializeField] private Sprite boardSprite;      // asphalt-texture_0
@@ -677,6 +689,25 @@ public class RoadLoopBuilder : MonoBehaviour
     public int ColumnCount => columnCount;
     public Vector2 ColumnSize => new Vector2(columnWidth, ColumnHeight) * PxToUnit;
 
+    // ---------- Slot ----------
+    public int SlotsPerColumn => slotsPerColumn;
+    /// <summary>Cỡ ô (local unit): x = ngang, y = dọc cột.</summary>
+    public Vector2 SlotSize => slotSize * PxToUnit;
+    private float SlotPitch => slotSize.y + slotGap;
+
+    /// <summary>Tâm ô (local). slot 0 = dưới cùng, tăng dần lên trên. Cả dãy ô căn giữa cột.</summary>
+    public Vector3 GetSlotCenter(int col, int slot)
+    {
+        Vector3 c = GetColumnCenter(col);
+        float offset = (slot - (slotsPerColumn - 1) * 0.5f) * SlotPitch * PxToUnit;
+        return c + new Vector3(0f, offset, 0f); // local +y = lên trên màn hình
+    }
+
+    public Vector3 GetSlotCenterWorld(int col, int slot) => transform.TransformPoint(GetSlotCenter(col, slot));
+
+    /// <summary>Cỡ ô trong world: x = ngang (X), y = dọc cột (Z).</summary>
+    public Vector2 SlotSizeWorld => Vector2.Scale(SlotSize, new Vector2(transform.lossyScale.x, transform.lossyScale.y));
+
     [FoldoutGroup("Board"), Button("Build Board", ButtonSizes.Large), GUIColor(0.55f, 0.75f, 1f)]
     public void BuildBoard()
     {
@@ -814,6 +845,18 @@ public class RoadLoopBuilder : MonoBehaviour
             Gizmos.DrawCube(c, size);
             Gizmos.color = Color.red;
             Gizmos.DrawWireCube(c, size);
+        }
+
+        if (!drawSlotGizmos) return;
+        Vector3 slot = new Vector3(SlotSize.x, SlotSize.y, 0f);
+        for (int i = 0; i < columnCount; i++)
+        for (int s = 0; s < slotsPerColumn; s++)
+        {
+            Vector3 c = GetSlotCenter(i, s);
+            Gizmos.color = new Color(0.2f, 1f, 0.3f, 0.18f);
+            Gizmos.DrawCube(c, slot);
+            Gizmos.color = new Color(0.2f, 1f, 0.3f, 1f);
+            Gizmos.DrawWireCube(c, slot);
         }
     }
 
