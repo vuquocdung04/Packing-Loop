@@ -1,0 +1,95 @@
+{
+    "road": "RoadMap_Sample",
+    "columns": [
+        {
+            "x": 1,
+            "y": 7,
+            "cars": [
+                "Blue",
+                "Blue"
+            ]
+        },
+        {
+            "x": 1,
+            "y": 3,
+            "cars": [
+                "Turquoise",
+                "Turquoise"
+            ]
+        },
+        {
+            "x": 2,
+            "y": 7,
+            "cars": [
+                "Turquoise",
+                "Turquoise"
+            ]
+        },
+        {
+            "x": 2,
+            "y": 3,
+            "cars": [
+                "Red",
+                "Turquoise"
+            ]
+        },
+        {
+            "x": 4,
+            "y": 7,
+            "cars": [
+                "Yellow"
+            ]
+        },
+        {
+            "x": 4,
+            "y": 3,
+            "cars": [
+                "Red"
+            ]
+        },
+        {
+            "x": 5,
+            "y": 7,
+            "cars": [
+                "Turquoise"
+            ]
+        },
+        {
+            "x": 5,
+            "y": 3,
+            "cars": [
+                "Red"
+            ]
+        }
+    ],
+    "lot": [
+        {
+            "cars": [
+                "Red",
+                "Yellow",
+                "Red"
+            ]
+        },
+        {
+            "cars": [
+                "Yellow",
+                "Blue",
+                "Yellow"
+            ]
+        },
+        {
+            "cars": [
+                "Yellow",
+                "Red",
+                "Blue"
+            ]
+        },
+        {
+            "cars": [
+                "Yellow",
+                "Blue",
+                "Blue"
+            ]
+        }
+    ]
+}

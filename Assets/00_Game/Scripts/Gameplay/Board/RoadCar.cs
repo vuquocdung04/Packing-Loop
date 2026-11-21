@@ -26,6 +26,8 @@ public class RoadCar : MonoBehaviour
     public string ColorKey { get; private set; }
     public State Mode { get; private set; } = State.Parked;
     public int LaneIndex => _laneIdx;
+    /// <summary>Làn đang chạy vòng (null nếu đang theo path / đỗ).</summary>
+    public List<Vector3> CurrentLane => _lane;
     public float Speed => _v;
 
     private float _maxSpeed, _turnSpeed, _brake, _length, _width;

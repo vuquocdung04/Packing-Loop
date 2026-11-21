@@ -1264,7 +1264,7 @@ public class RoadMapBuilder : MonoBehaviour
         l.Curb = curb;
     }
 
-    private List<Vector2> HorizontalInnerPath(List<Vector2> lane, int row, int a, int b)
+    private List<Vector2> HorizontalInnerPath(List<Vector2> lane, int row, int a, int b, bool trim = true)
     {
         float yc = (G.Ys[row] + G.Ys[row + 1]) * 0.5f;
         float xa = G.Xs[a], xb = G.Xs[b + 1];
@@ -1276,10 +1276,10 @@ public class RoadMapBuilder : MonoBehaviour
         var pts = new List<Vector2>();
         Quad(pts, new Vector2(xl, yc - half - kl), new Vector2(xl, yc), new Vector2(xl + kl, yc));
         Quad(pts, new Vector2(xr - kr, yc), new Vector2(xr, yc), new Vector2(xr, yc - half - kr));
-        return TrimBranch(pts);
+        return trim ? TrimBranch(pts) : pts;
     }
 
-    private List<Vector2> VerticalInnerPath(List<Vector2> lane, int col, int a, int b)
+    private List<Vector2> VerticalInnerPath(List<Vector2> lane, int col, int a, int b, bool trim = true)
     {
         float xc = (G.Xs[col] + G.Xs[col + 1]) * 0.5f;
         float ya = G.Ys[a], yb = G.Ys[b + 1];
@@ -1290,7 +1290,100 @@ public class RoadMapBuilder : MonoBehaviour
         var pts = new List<Vector2>();
         Quad(pts, new Vector2(xc + half + kt, yt), new Vector2(xc, yt), new Vector2(xc, yt + kt));
         Quad(pts, new Vector2(xc, ybo - kb), new Vector2(xc, ybo), new Vector2(xc + half + kb, ybo));
-        return TrimBranch(pts);
+        return trim ? TrimBranch(pts) : pts;
+    }
+
+    // ================= GAMEPLAY API =================
+
+    /// <summary>Làn xe (world). Points theo chiều đường vẽ (vòng ngoài: chiều biên; đường trong: trái→phải / trên→dưới).</summary>
+    public struct LaneInfo
+    {
+        public List<Vector3> Points;
+        public bool Closed; // vòng ngoài
+        public bool Forced; // đường giữa có barrier chặn làn trái → xe vòng ngoài bắt buộc rẽ vào
+    }
+
+    /// <summary>Dựng lại nếu dữ liệu hình học chưa có (vd vào Play mode).</summary>
+    public void EnsureBuilt()
+    {
+        if (map == null) return;
+        if (IsDirty || loops == null || loops.Count == 0) Build();
+    }
+
+    /// <summary>Vòng ngoài (phần tử 0) + các đường trong. stepPx = khoảng cách điểm (px).</summary>
+    public List<LaneInfo> GetLanesWorld(float stepPx = 50f)
+    {
+        EnsureBuilt();
+        var res = new List<LaneInfo>();
+        Loop outer = null;
+        foreach (Loop l in loops) if (l.Outer && l.Pts.Count >= 3) { outer = l; break; }
+        if (outer == null) return res;
+
+        var lane = new List<Vector2>(outer.Pts.Count);
+        foreach (Pt p in outer.Pts) lane.Add(p.P - p.N * LaneCenter);
+        res.Add(new LaneInfo { Points = ToWorldPath(lane, true, stepPx), Closed = true });
+
+        List<InnerRun> runs = InnerRuns();
+        int barrierRun = -1;
+        if (map.middleBarrier)
+            for (int i = 0; i < runs.Count; i++) if (runs[i].Horiz) { barrierRun = i; break; }
+        for (int i = 0; i < runs.Count; i++)
+        {
+            InnerRun r = runs[i];
+            List<Vector2> p = r.Horiz ? HorizontalInnerPath(lane, r.Line, r.A, r.B, false) : VerticalInnerPath(lane, r.Line, r.A, r.B, false);
+            if (p == null || p.Count < 2) continue;
+            res.Add(new LaneInfo { Points = ToWorldPath(p, false, stepPx), Forced = i == barrierRun });
+        }
+        return res;
+    }
+
+    private List<Vector3> ToWorldPath(List<Vector2> px, bool closed, float stepPx)
+    {
+        var res = new List<Vector3>();
+        int segs = closed ? px.Count : px.Count - 1;
+        for (int i = 0; i < segs; i++)
+        {
+            Vector2 a = px[i], b = px[(i + 1) % px.Count];
+            float len = Vector2.Distance(a, b);
+            if (len < 0.001f) continue;
+            int n = Mathf.Max(1, Mathf.CeilToInt(len / stepPx));
+            for (int k = 0; k < n; k++) Add(Vector2.Lerp(a, b, k / (float)n));
+        }
+        if (!closed) Add(px[^1]);
+        return res;
+
+        void Add(Vector2 p)
+        {
+            Vector3 w = PxToWorld(p);
+            if (res.Count > 0 && (res[^1] - w).sqrMagnitude < 1e-6f) return;
+            res.Add(w);
+        }
+    }
+
+    public ColumnSide ColumnEntry(int col) => Columns[col].entry;
+    public ColumnSide ColumnExit(int col) => Columns[col].exit;
+
+    /// <summary>Cột chứa ô map (x, y), −1 nếu không có.</summary>
+    public int FindColumn(int x, int y)
+    {
+        for (int i = 0; i < Columns.Count; i++)
+        {
+            RoadMapSO.ColumnRun c = Columns[i];
+            if (c.x == x && y >= c.TopY && y <= c.bottomY) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>Lối ra đầu tiên (world): tâm trên mép ngoài + nửa bề rộng (world).</summary>
+    public bool GetExitOpeningWorld(out Vector3 center, out float halfWidth)
+    {
+        EnsureBuilt();
+        center = default;
+        halfWidth = 0f;
+        if (exitEnds.Count == 0) return false;
+        center = PxToWorld(exitEnds[0].CenterPx);
+        halfWidth = map.exitWidth * 0.5f * PxToUnit * transform.lossyScale.x;
+        return true;
     }
 
     private static void Quad(List<Vector2> pts, Vector2 p0, Vector2 c, Vector2 p1)

@@ -1,0 +1,113 @@
+{
+    "road": "RoadMap_Network",
+    "columns": [
+        {
+            "x": 1,
+            "y": 7,
+            "cars": [
+                "Yellow",
+                "Yellow"
+            ]
+        },
+        {
+            "x": 1,
+            "y": 3,
+            "cars": [
+                "Orange",
+                "Red"
+            ]
+        },
+        {
+            "x": 2,
+            "y": 7,
+            "cars": [
+                "Blue",
+                "Turquoise"
+            ]
+        },
+        {
+            "x": 2,
+            "y": 3,
+            "cars": [
+                "Orange",
+                "Blue"
+            ]
+        },
+        {
+            "x": 3,
+            "y": 7,
+            "cars": [
+                "Yellow",
+                "Orange"
+            ]
+        },
+        {
+            "x": 3,
+            "y": 3,
+            "cars": [
+                "Turquoise",
+                "Red"
+            ]
+        },
+        {
+            "x": 4,
+            "y": 7,
+            "cars": [
+                "Blue",
+                "Orange"
+            ]
+        },
+        {
+            "x": 4,
+            "y": 3,
+            "cars": [
+                "Turquoise",
+                "Blue"
+            ]
+        },
+        {
+            "x": 5,
+            "y": 7,
+            "cars": [
+                "Orange"
+            ]
+        },
+        {
+            "x": 5,
+            "y": 3,
+            "cars": [
+                "Blue"
+            ]
+        }
+    ],
+    "lot": [
+        {
+            "cars": [
+                "Yellow",
+                "Red",
+                "Yellow"
+            ]
+        },
+        {
+            "cars": [
+                "Yellow",
+                "Turquoise",
+                "Blue"
+            ]
+        },
+        {
+            "cars": [
+                "Turquoise",
+                "Orange",
+                "Red"
+            ]
+        },
+        {
+            "cars": [
+                "Red",
+                "Red",
+                "Turquoise"
+            ]
+        }
+    ]
+}
