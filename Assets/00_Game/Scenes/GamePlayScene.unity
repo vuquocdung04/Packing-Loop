@@ -31855,6 +31855,11 @@ MonoBehaviour:
   - {fileID: 2100000, guid: c27539a0e01be7341bf566ca5d9a2ace, type: 2}
   carScale: 172.73
   carY: 0.6
+  blockerPrefab: {fileID: 5245074899884152959, guid: 77c0110b00807f04aaf79767428a0106, type: 3}
+  topBlockerOffset: {x: 0, y: 0.19, z: 0.4}
+  bottomBlockerOffset: {x: 0, y: 0, z: 0}
+  conePrefab: {fileID: 2729235965242276035, guid: 95126f92f3ab2414087a0fc07047783b, type: 3}
+  crossPrefab: {fileID: 99868027962270612, guid: a36ad0a5fda6ba24fab1f8f2f1ddb91e, type: 3}
   speed: 12
   brake: 60
   turnSpeed: 720

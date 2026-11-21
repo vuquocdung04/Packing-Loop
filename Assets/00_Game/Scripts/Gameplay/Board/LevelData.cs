@@ -20,6 +20,8 @@ public class LevelData
     {
         public int x, y;
         public List<string> cars = new();
+        /// <summary>Cột bị chặn (obstacle): barrier ở 2 miệng, ô có nón / dấu X — không nhận, không cho xe ra.</summary>
+        public bool blocked;
     }
 
     [Serializable]

@@ -37,7 +37,8 @@
             "x": 4,
             "y": 7,
             "cars": [
-                "Yellow"
+                "Yellow",
+                "Turquoise"
             ]
         },
         {
@@ -50,9 +51,8 @@
         {
             "x": 5,
             "y": 7,
-            "cars": [
-                "Turquoise"
-            ]
+            "blocked": true,
+            "cars": []
         },
         {
             "x": 5,

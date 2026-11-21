@@ -1360,6 +1360,21 @@ public class RoadMapBuilder : MonoBehaviour
         }
     }
 
+    /// <summary>Mép đảo ở miệng cột (world, giữa bề ngang cột) — chỗ cột giáp đường. top = miệng trên.</summary>
+    public Vector3 GetColumnMouthWorld(int col, bool top)
+    {
+        EnsureBuilt();
+        RoadMapSO.ColumnRun c = Columns[col];
+        int rt = G.RowOf[c.TopY], rb = G.RowOf[c.bottomY];
+        if (rt > 0 && G.Margin[c.x, rt - 1]) rt--;
+        if (rb + 1 < G.Height && G.Margin[c.x, rb + 1]) rb++;
+        float x = (G.Xs[c.x] + G.Xs[c.x + 1]) * 0.5f;
+        float y = top
+            ? G.Ys[rt] - (IsRingRoad(c.x, rt - 1) ? map.islandPadding : 0f)
+            : G.Ys[rb + 1] + (IsRingRoad(c.x, rb + 1) ? map.islandPadding : 0f);
+        return PxToWorld(new Vector2(x, y));
+    }
+
     public ColumnSide ColumnEntry(int col) => Columns[col].entry;
     public ColumnSide ColumnExit(int col) => Columns[col].exit;
 

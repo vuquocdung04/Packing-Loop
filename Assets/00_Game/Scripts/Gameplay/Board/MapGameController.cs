@@ -36,6 +36,14 @@ public class MapGameController : MonoBehaviour
     [BoxGroup("Xe"), LabelText("Scale mesh"), SerializeField] private float carScale = 172.73f;
     [BoxGroup("Xe"), LabelText("Độ cao tâm xe (y)"), SerializeField] private float carY = 0.6f;
 
+    [BoxGroup("Obstacle"), LabelText("Barrier chắn miệng cột"), SerializeField] private GameObject blockerPrefab; // ColumnRoadBlocker
+    [BoxGroup("Obstacle"), LabelText("Thanh chắn trên: lệch thêm (world)"),
+     Tooltip("Cộng thêm vào vị trí thanh chắn ở miệng TRÊN (sau khi đặt mép trong cột). Chỉnh tay cho hợp mắt: (0, 0.19, 0.40).")]
+    [SerializeField] private Vector3 topBlockerOffset = new(0f, 0.19f, 0.40f);
+    [BoxGroup("Obstacle"), LabelText("Thanh chắn dưới: lệch thêm (world)"), SerializeField] private Vector3 bottomBlockerOffset = Vector3.zero;
+    [BoxGroup("Obstacle"), LabelText("Nón"), SerializeField] private GameObject conePrefab;                     // ObstacleCone
+    [BoxGroup("Obstacle"), LabelText("Dấu X"), SerializeField] private GameObject crossPrefab;                  // ObstacleCross
+
     [BoxGroup("Chạy"), LabelText("Tốc độ tối đa (unit/s)"), SerializeField] private float speed = 12f;
     [BoxGroup("Chạy"), LabelText("Phanh (unit/s²)"), SerializeField] private float brake = 60f;
     [BoxGroup("Chạy"), LabelText("Tốc độ xoay (độ/s)"), SerializeField] private float turnSpeed = 720f;
@@ -86,6 +94,7 @@ public class MapGameController : MonoBehaviour
         public float ExitSign = -1f;                     // hướng z xe rời cột
         public ColumnSide Entry = ColumnSide.Top, Exit = ColumnSide.Bottom;
         public float X;
+        public int Index = -1;                           // chỉ số cột trong RoadMapBuilder
         public Lane ExitLane;
         public int ExitNear, ExitJoin;
 
@@ -257,7 +266,7 @@ public class MapGameController : MonoBehaviour
     {
         for (int i = 0; i < _road.ColumnCount; i++)
         {
-            var col = new Column { Entry = _road.ColumnEntry(i), Exit = _road.ColumnExit(i) };
+            var col = new Column { Entry = _road.ColumnEntry(i), Exit = _road.ColumnExit(i), Index = i };
             bool exitTop = col.Exit == ColumnSide.Top;
             col.ExitSign = exitTop ? 1f : -1f;
             int n = _road.SlotsInColumn(i);
@@ -268,6 +277,7 @@ public class MapGameController : MonoBehaviour
             }
             col.X = col.Slots.Count > 0 ? col.Slots[0].x : 0f;
             _cols.Add(col);
+            SetColumnArrows(col, true); // level trước có thể đã ẩn
         }
 
         foreach (LevelData.ColumnData cd in data.columns)
@@ -275,6 +285,11 @@ public class MapGameController : MonoBehaviour
             int ci = _road.FindColumn(cd.x, cd.y);
             if (ci < 0) { Debug.LogWarning($"[MapGame] Ô ({cd.x},{cd.y}) không thuộc cột nào của {data.road}."); continue; }
             Column col = _cols[ci];
+            if (cd.blocked)
+            {
+                BlockColumn(col);
+                continue;
+            }
             foreach (string color in cd.cars)
             {
                 if (string.IsNullOrEmpty(color)) continue;
@@ -284,6 +299,64 @@ public class MapGameController : MonoBehaviour
                 col.Colors.Add(color);
             }
         }
+    }
+
+    /// <summary>
+    /// Cột bị chặn: không vào / không ra (bỏ miệng → không có điểm rẽ, tap không có tác dụng).
+    /// Hình: barrier sọc vàng đen chắn 2 miệng, ô xen kẽ dấu X / nón (sprite gốc, quay về camera như game gốc).
+    /// </summary>
+    private void BlockColumn(Column col)
+    {
+        col.Entry = ColumnSide.None;
+        col.Exit = ColumnSide.None;
+        if (col.Slots.Count == 0) return;
+        var root = new GameObject("BlockedColumn").transform;
+        root.SetParent(_carRoot, false);
+        // Thanh chắn: nằm trong cột, mép ngoài trùng mép đảo ở miệng (như game gốc).
+        Place(blockerPrefab, _road.GetColumnMouthWorld(col.Index, true), 1, topBlockerOffset);
+        Place(blockerPrefab, _road.GetColumnMouthWorld(col.Index, false), -1, bottomBlockerOffset);
+        // Nón / X: giữa từng ô.
+        for (int i = 0; i < col.Slots.Count; i++)
+            Place(i % 2 == 0 ? crossPrefab : conePrefab, col.Slots[i], 0, Vector3.zero);
+        SetColumnArrows(col, false);
+
+        // align: 0 = tâm hình vào at; +1 = mép trên hình chạm at (nằm dưới at); −1 = mép dưới hình chạm at.
+        void Place(GameObject prefab, Vector3 at, int align, Vector3 extra)
+        {
+            if (prefab == null) return;
+            GameObject go = Instantiate(prefab, root);
+            float y0 = _road.transform.position.y;
+            go.transform.position = new Vector3(go.transform.position.x, y0 + 0.05f, go.transform.position.z);
+            // Sprite nghiêng về camera → vị trí nhìn trên màn hình = điểm chiếu dọc hướng nhìn xuống mặt đường.
+            Camera cam = Camera.main;
+            Vector3 f = cam != null && cam.transform.forward.y < -0.01f ? cam.transform.forward : Vector3.down;
+            float minZ = float.MaxValue, maxZ = float.MinValue, minX = float.MaxValue, maxX = float.MinValue;
+            foreach (SpriteRenderer r in go.GetComponentsInChildren<SpriteRenderer>())
+            {
+                Bounds b = r.bounds;
+                for (int k = 0; k < 8; k++)
+                {
+                    var p = new Vector3((k & 1) == 0 ? b.min.x : b.max.x, (k & 2) == 0 ? b.min.y : b.max.y, (k & 4) == 0 ? b.min.z : b.max.z);
+                    Vector3 g = p + f * ((p.y - y0) / -f.y);
+                    minZ = Mathf.Min(minZ, g.z); maxZ = Mathf.Max(maxZ, g.z);
+                    minX = Mathf.Min(minX, g.x); maxX = Mathf.Max(maxX, g.x);
+                }
+            }
+            if (minZ > maxZ) return;
+            float refZ = align > 0 ? maxZ : align < 0 ? minZ : (minZ + maxZ) * 0.5f;
+            go.transform.position += new Vector3(at.x - (minX + maxX) * 0.5f, 0f, at.z - refZ) + extra;
+        }
+    }
+
+    /// <summary>Bật/tắt tam giác (mũi tên vào/ra) của cột — sprite "Arrow-{x}-{yTrên}-In/Out" do RoadMapBuilder dựng.</summary>
+    private void SetColumnArrows(Column col, bool on)
+    {
+        if (col.Index < 0) return;
+        int n = _road.SlotsInColumn(col.Index);
+        Vector2Int top = _road.ColumnCell(col.Index, n - 1);
+        string prefix = $"Arrow-{top.x}-{top.y}-";
+        foreach (SpriteRenderer sr in _road.GetComponentsInChildren<SpriteRenderer>(true))
+            if (sr.name.StartsWith(prefix)) sr.gameObject.SetActive(on);
     }
 
     private void BuildLot(LevelData data)
