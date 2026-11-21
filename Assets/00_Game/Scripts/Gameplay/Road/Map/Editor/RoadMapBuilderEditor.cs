@@ -108,13 +108,16 @@ public class RoadMapBuilderEditor : OdinEditor
         }
 
         Handles.color = CurbColor;
-        bool labelRing = true, labelMid = true;
+        var labeled = new bool[4];
         for (int i = 0; i < curbs.Length; i++)
         {
             RoadMapBuilder.CurbEnd c = curbs[i];
             string label = null;
-            if (c.Ring && labelRing) { label = $"Viền thò ngoài = {map.curbExtendRing:0}"; labelRing = false; }
-            if (!c.Ring && labelMid) { label = $"Viền thò giữa = {map.curbExtend:0}"; labelMid = false; }
+            if (!labeled[(int)c.Group])
+            {
+                labeled[(int)c.Group] = true;
+                label = $"Viền thò {RoadMapBuilder.CurbGroupName(c.Group)} = {b.GetCurbExt(c.Group):0}";
+            }
             // Chỉ kéo dọc mép đảo (2 chiều): dài ra / thu lại. Phía vòng ngoài và phía đường giữa chỉnh riêng.
             Slider(b, b.PxToWorld(c.PosPx), b.PxDirToWorld(c.DirPx), 0.15f, "Road Map Curb",
                 w => b.SetCurbEndHandle(c, w), label);

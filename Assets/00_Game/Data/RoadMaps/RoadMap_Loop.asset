@@ -16,14 +16,20 @@ MonoBehaviour:
   height: 7
   cells: 01010101010101010202020202010102020202020101020202020201010202020202010102020202020101010103010101
   flow: 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  cellSize: 520
+  cellSize: 521
+  cellWidth: 500
   roadWidth: 510.6
-  islandPadding: 0
+  islandPadding: 32
   convexRadius: 960
   junctionRadius: 450
   exitWidth: 1626
   curbExtend: 0
-  curbExtendRing: 0
-  columnEndMargin: 200
+  curbExtendMidTop: 0
+  curbExtendRing: -482.96082
+  curbExtendRingBottom: -529.4158
+  junctionHorns: 0
+  middleBarrier: 0
+  columnEndMargin: 458.5
+  mouthMargins: []
   columnLinePadding: 40
   arrowInset: 50

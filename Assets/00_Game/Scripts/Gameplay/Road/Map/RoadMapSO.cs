@@ -38,6 +38,10 @@ public class RoadMapSO : ScriptableObject
     [BoxGroup("Hình dáng (px)"), LabelText("Cỡ 1 ô"), Tooltip("= 1 ô xe = bề rộng đường tối thiểu. Gốc: ô xe 521.")]
     [Min(100f)] public float cellSize = 520f;
 
+    [BoxGroup("Hình dáng (px)"), LabelText("Bề ngang 1 ô"),
+     Tooltip("Bề ngang mỗi cột lưới (= khoảng cách tâm 2 cột xe). Cỡ 1 ô ở trên là chiều dọc (= 1 ô xe). RoadLoop: ngang 500 (cột 380 + cách 120), dọc 521.")]
+    [Min(100f)] public float cellWidth = 520f;
+
     [BoxGroup("Hình dáng (px)"), LabelText("Bề rộng đường"), Tooltip("Chấm vàng. Lớn hơn cỡ ô → đường nở ra phía ngoài, đảo/cột giữ nguyên. Gốc: 510.")]
     [Min(100f)] public float roadWidth = 520f;
 
@@ -55,18 +59,39 @@ public class RoadMapSO : ScriptableObject
     [BoxGroup("Hình dáng (px)"), LabelText("Lối ra"), Tooltip("Chấm xanh dương. Bề rộng khoảng hở viền ngoài ở ô Lối ra. Gốc: 600.")]
     [Min(0f)] public float exitWidth = 600f;
 
-    [BoxGroup("Hình dáng (px)"), LabelText("Viền thò (phía đường giữa)"),
-     Tooltip("Chấm xanh lá. Đầu viền đảo ở miệng cột quay vào đường giữa / ngã ba: kéo dài (+) / thu lại (−).")]
+    [BoxGroup("Hình dáng (px)"), LabelText("Viền thò: giữa, đầu dưới đảo"),
+     Tooltip("Chấm xanh lá. Đầu DƯỚI viền đảo khi miệng cột dưới quay vào đường giữa / ngã ba: kéo dài (+) / thu lại (−).")]
     public float curbExtend = 0f;
 
-    [BoxGroup("Hình dáng (px)"), LabelText("Viền thò (phía vòng ngoài)"),
-     Tooltip("Chấm xanh lá. Đầu viền đảo ở miệng cột quay ra vòng đường ngoài (chỗ góc cong): kéo dài (+) / thu lại (−). Độc lập với phía đường giữa.")]
+    [BoxGroup("Hình dáng (px)"), LabelText("Viền thò: giữa, đầu trên đảo"),
+     Tooltip("Chấm xanh lá. Đầu TRÊN viền đảo khi miệng cột trên quay vào đường giữa (đảo nằm dưới đường giữa).")]
+    public float curbExtendMidTop = 0f;
+
+    [BoxGroup("Hình dáng (px)"), LabelText("Viền thò: ngoài, đầu trên đảo"),
+     Tooltip("Chấm xanh lá. Đầu TRÊN viền đảo khi miệng cột trên quay ra vòng đường ngoài (chỗ góc cong).")]
     public float curbExtendRing = 0f;
+
+    [BoxGroup("Hình dáng (px)"), LabelText("Viền thò: ngoài, đầu dưới đảo"),
+     Tooltip("Chấm xanh lá. Đầu DƯỚI viền đảo khi miệng cột dưới quay ra vòng đường ngoài.")]
+    public float curbExtendRingBottom = 0f;
+
+    [BoxGroup("Hình dáng (px)"), LabelText("Sừng đảo dưới đường giữa"),
+     Tooltip("Như RoadNetwork: mép trên đảo nằm dưới đường giữa hất lên ở 2 đầu, đồng tâm với góc bo đảo trên (bán kính bo ngã ba + bề rộng đường giữa) → dải đường giữa cong đều, đầu sừng nhọn. Tắt = góc bo ngã ba thường.")]
+    public bool junctionHorns = false;
+
+    [BoxGroup("Hình dáng (px)"), LabelText("Barrier + mũi tên nhập làn"),
+     Tooltip("Như RoadNetwork: barrier chặn làn trái ngay dưới đường giữa (đường ngang nối 2 bên vòng ngoài), mũi tên nhập làn ở làn phải, vạch li ti dẫn vào barrier.")]
+    public bool middleBarrier = false;
 
     [BoxGroup("Hình dáng (px)"), LabelText("Khoảng đầu cột"),
      Tooltip("Như RoadLoop: ở mỗi miệng cột, đảo dài thêm khoảng này (giữa ô xe cuối và mép đường) — chỗ đặt mũi tên, xe đỗ không che. " +
              "Đường phía sau dịch ra theo, bề rộng đường không đổi. RoadLoop ≈ 200.")]
     [Min(0f)] public float columnEndMargin = 200f;
+
+    [BoxGroup("Hình dáng (px)"), LabelText("Khoảng đầu cột riêng (từ trên xuống)"),
+     Tooltip("Ghi đè khoảng đầu cột cho từng đường miệng cột, theo thứ tự từ trên xuống. Thiếu / âm = dùng giá trị chung ở trên. " +
+             "Dùng để dời đường giữa lên/xuống (vd RoadNetwork: đảo trên cao hơn đảo dưới).")]
+    public List<float> mouthMargins = new();
 
     [BoxGroup("Mũi tên cột (px)"), LabelText("Đầu cột cách đầu viền"),
      Tooltip("Như columnPaddingY của RoadLoop: đầu cột (đầu vạch chia) = điểm đầu/cuối viền đảo + khoảng này. Kéo viền (chấm xanh lá) → cột, vạch chia, mũi tên chạy theo.")]

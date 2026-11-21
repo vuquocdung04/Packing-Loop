@@ -64,6 +64,53 @@ public class RoadMapBuilder : MonoBehaviour
     [BoxGroup("Mũi tên cột"), LabelText("Không có viền: chừa mép đảo (px)"), Tooltip("Đảo không có đầu viền (viền kín / không viền) → đầu cột cách mép đảo khoảng này.")]
     [SerializeField, Min(0f)] private float columnDividerGap = 20f;
 
+    [BoxGroup("Vạch đứt"), LabelText("Sprite"), Tooltip("RoadDash_Round như RoadLoop/RoadNetwork. Trống = không vẽ vạch.")]
+    [SerializeField] private Sprite dash;
+    [BoxGroup("Vạch đứt"), LabelText("Material"), Tooltip("Sprite-Unlit-Default.")]
+    [SerializeField] private Material dashMaterial;
+    [BoxGroup("Vạch đứt"), LabelText("Scale")]
+    [SerializeField, Min(0.01f)] private float dashScale = 0.45f;
+    [BoxGroup("Vạch đứt"), LabelText("Khoảng cách (px)")]
+    [SerializeField, Min(10f)] private float dashPeriod = 600f;
+    [BoxGroup("Vạch đứt"), LabelText("Vạch đường trong"),
+     Tooltip("Như RoadNetwork: đường giữa (nối 2 bên vòng ngoài) có vạch theo tâm, 2 đầu cua vào tâm làn vòng ngoài.")]
+    [SerializeField] private bool innerDashes = true;
+    [BoxGroup("Vạch đứt"), LabelText("Điểm tách khỏi làn (px)"), ShowIf(nameof(innerDashes)),
+     Tooltip("Như turnDashBranch của RoadNetwork: bỏ đoạn đầu/cuối vạch đường trong còn trùng làn vòng ngoài (lệch < khoảng này).")]
+    [SerializeField, Min(0f)] private float turnDashBranch = 40f;
+    [BoxGroup("Vạch đứt"), LabelText("Chừa quanh mũi tên (px)")]
+    [SerializeField, Min(0f)] private float dashClearance = 60f;
+    [BoxGroup("Vạch đứt"), LabelText("Li ti: sprite"), Tooltip("Vạch li ti dẫn vào barrier. Trống = sprite vạch thường.")]
+    [SerializeField] private Sprite middleDash;
+    [BoxGroup("Vạch đứt"), LabelText("Li ti: scale")]
+    [SerializeField, Min(0.01f)] private float middleDashScale = 0.22f;
+    [BoxGroup("Vạch đứt"), LabelText("Li ti: khoảng cách (px)")]
+    [SerializeField, Min(10f)] private float middleDashPeriod = 130f;
+    [BoxGroup("Vạch đứt"), LabelText("Li ti: đầu trên cao hơn mép trên đường giữa (px)")]
+    [SerializeField] private float barrierGuideTop = 70f;
+    [BoxGroup("Vạch đứt"), LabelText("Li ti: đầu dưới cao hơn tay chắn (px)")]
+    [SerializeField] private float barrierGuideBottom = 200f;
+
+    [BoxGroup("Mũi tên nhập làn"), LabelText("Sprite"), Tooltip("arrow_corner. Chỉ hiện khi map bật 'Barrier + mũi tên nhập làn'.")]
+    [SerializeField] private Sprite mergeArrow;
+    [BoxGroup("Mũi tên nhập làn"), LabelText("Scale")]
+    [SerializeField, Min(0.01f)] private float mergeArrowScale = 1.09f;
+    [BoxGroup("Mũi tên nhập làn"), LabelText("Cách mép ngoài phải (px)")]
+    [SerializeField] private float mergeArrowInset = 238f;
+    [BoxGroup("Mũi tên nhập làn"), LabelText("Cao hơn tâm đường giữa (px)")]
+    [SerializeField] private float mergeArrowOffsetY = 289f;
+    [BoxGroup("Mũi tên nhập làn"), LabelText("Màu")]
+    [SerializeField] private Color mergeArrowColor = new(0.565f, 0.573f, 0.694f, 1f);
+
+    [BoxGroup("Barrier"), LabelText("Barrier"), Tooltip("Object barrier trong scene (gốc = tâm cột, tay chắn sang phải). Builder chỉ dời vị trí + bật/tắt.")]
+    [SerializeField] private Transform barrier;
+    [BoxGroup("Barrier"), LabelText("Cách mép dưới đường giữa (px)")]
+    [SerializeField] private float barrierGap = 120f;
+    [BoxGroup("Barrier"), LabelText("Cột cách mép ngoài (px)")]
+    [SerializeField] private float barrierInset = 50f;
+    [BoxGroup("Barrier"), LabelText("Chừa quanh barrier (px, dọc làn)")]
+    [SerializeField, Min(0f)] private float barrierDashClearance = 150f;
+
     [FoldoutGroup("Art"), Required][SerializeField] private Sprite profile;          // Road_Vertical
     [FoldoutGroup("Art"), Required][SerializeField] private Material roadMaterial;   // RoadMesh
     [FoldoutGroup("Art")][SerializeField] private Material curbSideMaterial;         // RoadCurbSide
@@ -81,6 +128,15 @@ public class RoadMapBuilder : MonoBehaviour
     }
 
     public bool IsDirty => map != null && map.Version != builtVersion;
+
+    private void OnValidate() => builtVersion = -1; // đổi field của builder (art, vạch…) → build lại
+
+    public void SetDashArt(Sprite sprite, Material mat)
+    {
+        dash = sprite;
+        dashMaterial = mat;
+        builtVersion = -1;
+    }
 
 #if UNITY_EDITOR
     /// <summary>Gán art mặc định (dùng khi window tạo builder mới).</summary>
@@ -174,9 +230,15 @@ public class RoadMapBuilder : MonoBehaviour
         var rows = new List<int>();
         var heights = new List<float>();
         grid.RowOf = new int[h];
+        int mouth = 0;
         for (int y = 0; y < h; y++)
         {
-            if (y > 0 && m > 0.5f && MouthLine(y)) { rows.Add(-y - 1); heights.Add(m); }
+            if (y > 0 && MouthLine(y))
+            {
+                float mm = map.mouthMargins != null && mouth < map.mouthMargins.Count && map.mouthMargins[mouth] >= 0f ? map.mouthMargins[mouth] : m;
+                mouth++;
+                if (mm > 0.5f) { rows.Add(-y - 1); heights.Add(mm); }
+            }
             grid.RowOf[y] = rows.Count;
             rows.Add(y);
             heights.Add(cs);
@@ -198,7 +260,7 @@ public class RoadMapBuilder : MonoBehaviour
         }
 
         grid.Xs = new float[w + 1];
-        for (int x = 0; x <= w; x++) grid.Xs[x] = x * cs;
+        for (int x = 0; x <= w; x++) grid.Xs[x] = x * map.cellWidth;
         grid.Ys = new float[rows.Count + 1];
         for (int r = 0; r < rows.Count; r++) grid.Ys[r + 1] = grid.Ys[r] + heights[r];
         return grid;
@@ -220,7 +282,11 @@ public class RoadMapBuilder : MonoBehaviour
     private float Cs => map != null ? map.cellSize : 520f;
     private float GridW => G.TotalW;
     private float GridH => G.TotalH;
-    private float Delta => map != null ? map.roadWidth - Cs : 0f; // mép ngoài nở ra thêm
+    private float Cw => map != null ? map.cellWidth : 520f;
+    // Mép ngoài nở ra thêm = bề rộng đường − cỡ ô theo phương pháp tuyến (ngang: bề ngang ô, dọc: cỡ ô).
+    private float DeltaX => map != null ? map.roadWidth - Cw : 0f;
+    private float DeltaY => map != null ? map.roadWidth - Cs : 0f;
+    private float DeltaAlong(Vector2 normal) => Mathf.Abs(normal.x) > 0.5f ? DeltaX : DeltaY;
 
     private Vector3 ToLocal(Vector2 px) => new((px.x - GridW * 0.5f) * PxToUnit, (GridH * 0.5f - px.y) * PxToUnit, 0f);
     private Vector2 FromLocal(Vector3 l) => new(l.x / PxToUnit + GridW * 0.5f, GridH * 0.5f - l.y / PxToUnit);
@@ -295,12 +361,33 @@ public class RoadMapBuilder : MonoBehaviour
         public Vector2 CenterPx, DirPx, PosPx; // tâm lối ra (trên mép ngoài), hướng dọc mép, vị trí chấm (giữa viền)
     }
 
+    /// <summary>Nhóm đầu viền đảo — mỗi nhóm 1 tham số viền thò.</summary>
+    public enum CurbGroup { MidBottom, MidTop, RingTop, RingBottom }
+
+    private float CurbExt(CurbGroup g) => g switch
+    {
+        CurbGroup.MidTop => map.curbExtendMidTop,
+        CurbGroup.RingTop => map.curbExtendRing,
+        CurbGroup.RingBottom => map.curbExtendRingBottom,
+        _ => map.curbExtend,
+    };
+
+    public static string CurbGroupName(CurbGroup g) => g switch
+    {
+        CurbGroup.MidTop => "giữa, đầu trên",
+        CurbGroup.RingTop => "ngoài, đầu trên",
+        CurbGroup.RingBottom => "ngoài, đầu dưới",
+        _ => "giữa, đầu dưới",
+    };
+
+    public float GetCurbExt(CurbGroup g) => CurbExt(g);
+
     public struct CurbEnd
     {
         public int Loop;
         public bool Start;
         public float BaseS; // vị trí đầu/cuối viền khi viền thò = 0
-        public bool Ring;   // đầu viền quay ra vòng ngoài → chỉnh curbExtendRing, ngược lại curbExtend
+        public CurbGroup Group;
         public Vector2 PosPx;
         public Vector2 DirPx; // hướng dọc viền tại đầu viền → chấm chỉ kéo được 2 chiều theo mép đảo
     }
@@ -358,8 +445,13 @@ public class RoadMapBuilder : MonoBehaviour
         float s = NearestS(l, WorldToPx(world));
         float d = Mathf.Repeat(s - c.BaseS + l.Total * 0.5f, l.Total) - l.Total * 0.5f;
         float e = Mathf.Clamp(c.Start ? -d : d, -2f * Cs, 3f * Cs);
-        if (c.Ring) map.curbExtendRing = e;
-        else map.curbExtend = e;
+        switch (c.Group)
+        {
+            case CurbGroup.MidTop: map.curbExtendMidTop = e; break;
+            case CurbGroup.RingTop: map.curbExtendRing = e; break;
+            case CurbGroup.RingBottom: map.curbExtendRingBottom = e; break;
+            default: map.curbExtend = e; break;
+        }
         map.Touch();
     }
 
@@ -506,7 +598,8 @@ public class RoadMapBuilder : MonoBehaviour
         float pad = map.islandPadding;
         int n = loop.Runs.Count;
         var off = new float[n];
-        for (int i = 0; i < n; i++) off[i] = loop.Outer ? Delta + pad : loop.Runs[i].Ring ? -pad : 0f;
+        for (int i = 0; i < n; i++)
+            off[i] = loop.Outer ? DeltaAlong(NormalOf(loop.Runs[i].Dir)) + pad : loop.Runs[i].Ring ? -pad : 0f;
         var vf = new Vector2[n];
         for (int i = 0; i < n; i++)
         {
@@ -688,7 +781,7 @@ public class RoadMapBuilder : MonoBehaviour
                 Vector2 nn = n;
                 l.Add(new Opening
                 {
-                    Center = CellCenterPx(new Vector2Int(x, y)) + nn * (Cs * 0.5f + Delta + map.islandPadding),
+                    Center = CellCenterPx(new Vector2Int(x, y)) + nn * ((Mathf.Abs(nn.x) > 0.5f ? Cw : Cs) * 0.5f + DeltaAlong(nn) + map.islandPadding),
                     Normal = nn,
                     Dir = new Vector2(-nn.y, nn.x),
                 });
@@ -785,6 +878,7 @@ public class RoadMapBuilder : MonoBehaviour
         {
             Sample(l, outerCorners);
             if (l.Outer) ApplyOpenings(l, openings);
+            else if (map.junctionHorns) LiftHorns(l);
             ComputeS(l);
         }
         BuildHandles(openings);
@@ -810,19 +904,20 @@ public class RoadMapBuilder : MonoBehaviour
                 List<Vector2> iv = CurbIntervals(l);
                 if (iv != null)
                 {
-                    // Mỗi đầu viền thò theo phía của nó: miệng cột quay ra vòng ngoài hay vào đường giữa.
+                    // Mỗi đầu viền thò theo nhóm: (vòng ngoài / đường giữa) × (đầu trên / đầu dưới đảo).
                     (bool topRing, bool botRing) = IslandRingSides(li);
                     float midY = LoopMidY(l);
-                    bool RingAt(float s) => PointAt(l, s).P.y < midY ? topRing : botRing;
-                    float ExtAt(float s) => RingAt(s) ? map.curbExtendRing : map.curbExtend;
+                    CurbGroup GroupAt(float s) => PointAt(l, s).P.y < midY
+                        ? (topRing ? CurbGroup.RingTop : CurbGroup.MidTop)
+                        : (botRing ? CurbGroup.RingBottom : CurbGroup.MidBottom);
+                    float ExtAt(float s) => CurbExt(GroupAt(s));
                     iv = Extend(l, iv, ExtAt);
                     foreach (Vector2 r in iv)
                     {
                         if (r.y - r.x >= l.Total - 0.5f) continue;
-                        bool ra = RingAt(r.x), rb = RingAt(r.y);
-                        float ea = ra ? map.curbExtendRing : map.curbExtend, eb = rb ? map.curbExtendRing : map.curbExtend;
-                        curbEnds.Add(new CurbEnd { Loop = li, Start = true, Ring = ra, BaseS = r.x + ea, PosPx = CurbPos(l, r.x), DirPx = CurbDir(l, r.x) });
-                        curbEnds.Add(new CurbEnd { Loop = li, Start = false, Ring = rb, BaseS = r.y - eb, PosPx = CurbPos(l, r.y), DirPx = CurbDir(l, r.y) });
+                        CurbGroup ga = GroupAt(r.x), gb = GroupAt(r.y);
+                        curbEnds.Add(new CurbEnd { Loop = li, Start = true, Group = ga, BaseS = r.x + CurbExt(ga), PosPx = CurbPos(l, r.x), DirPx = CurbDir(l, r.x) });
+                        curbEnds.Add(new CurbEnd { Loop = li, Start = false, Group = gb, BaseS = r.y - CurbExt(gb), PosPx = CurbPos(l, r.y), DirPx = CurbDir(l, r.y) });
                     }
                 }
                 Curbs(islandCurb, l, iv, IslandO0, IslandO1, InnerUvOut, InnerUvIn, InnerColCenter);
@@ -837,6 +932,7 @@ public class RoadMapBuilder : MonoBehaviour
 
         BuildColumnArrows(root);
         BuildColumnDividers(root);
+        BuildDashes(root);
 
         if (drawDividers)
         {
@@ -901,6 +997,396 @@ public class RoadMapBuilder : MonoBehaviour
             hasArrowHandle = true;
             arrowHandlePx = px;
             arrowInwardPx = inwardPx;
+        }
+    }
+
+    // ================= VẠCH ĐỨT =================
+
+    // Làn = phần mặt đường lộ ra giữa viền ngoài và viền đảo (giống RoadNetworkBuilder), tính từ mép ngoài vào.
+    private float LaneCenter => ((OuterColEdge - OuterColIn) + (map.roadWidth - (InnerColIn - InnerColEdge))) * 0.5f;
+
+    /// <summary>
+    /// Vạch đứt như RoadNetwork: (1) tâm làn vòng ngoài, rải đều cả vòng; (2) mỗi đường trong nối 2 bên vòng ngoài
+    /// (dải ô đường không thuộc vòng ngoài, 2 đầu giáp vòng ngoài) → vạch theo tâm, 2 đầu cua Bezier vào tâm làn vòng ngoài.
+    /// Đường ngang cua lên trên (như RoadNetwork: làn trái ↓ → đường giữa → làn phải ↑), đường dọc cua sang phải.
+    /// </summary>
+    private void BuildDashes(Transform root)
+    {
+        dashZones.Clear();
+        List<InnerRun> runs = InnerRuns();
+        int barrierRun = -1;
+        if (map.middleBarrier)
+            for (int i = 0; i < runs.Count; i++) if (runs[i].Horiz) { barrierRun = i; break; }
+        bool barrierOn = barrierRun >= 0;
+
+        // Đồ đặt trên mặt đường trước → đăng ký vùng cấm → vạch né (như RoadNetwork).
+        if (barrierOn) PlaceMergeArrow(root, runs[barrierRun]);
+        PlaceBarrier(barrierOn ? runs[barrierRun] : (InnerRun?)null);
+
+        if (dash == null) return;
+        Loop outer = null;
+        foreach (Loop l in loops) if (l.Outer && l.Pts.Count >= 3) { outer = l; break; }
+        if (outer == null) return;
+
+        var parent = new GameObject("Dashes").transform;
+        parent.SetParent(root, false);
+
+        var lane = new List<Vector2>(outer.Pts.Count);
+        foreach (Pt p in outer.Pts) lane.Add(p.P - p.N * LaneCenter);
+
+        var paths = new List<List<Vector2>>();
+        if (innerDashes) foreach (InnerRun r in runs) paths.Add(InnerPath(lane, r));
+
+        if (barrierOn && paths[barrierRun] != null)
+        {
+            // Làn trái từ chỗ bắt đầu cua vào đường giữa tới barrier: vạch vòng ngoài nhường cho vạch đường giữa.
+            InnerRun br = runs[barrierRun];
+            float yStart = paths[barrierRun][0].y, yEnd = G.Ys[br.Line + 1] + barrierGap, w = map.roadWidth;
+            AddDashZonePx(new Vector2(OuterLeftX + w * 0.5f, (yStart + yEnd) * 0.5f), new Vector2(w * 0.5f, Mathf.Abs(yEnd - yStart) * 0.5f), true);
+        }
+
+        DashAlong(parent, lane, true, dash, dashScale, dashPeriod, true);
+        for (int i = 0; i < paths.Count; i++)
+            if (paths[i] != null) DashAlong(parent, paths[i], false, dash, dashScale, dashPeriod, false, barrierOn && i == barrierRun);
+
+        // Vạch li ti: cong từ mép ngoài làn trái xuống đầu tay chắn barrier.
+        if (barrierOn && innerDashes)
+            DashAlong(parent, BarrierGuidePath(runs[barrierRun]), false, middleDash != null ? middleDash : dash, middleDashScale, middleDashPeriod, false);
+    }
+
+    // ---------- Barrier / mũi tên nhập làn (như RoadNetwork) ----------
+
+    /// <summary>Mũi tên nhập làn ở làn phải, cao hơn tâm đường giữa mergeArrowOffsetY, chỉ lên.</summary>
+    private void PlaceMergeArrow(Transform root, InnerRun run)
+    {
+        if (mergeArrow == null) return;
+        float yc = (G.Ys[run.Line] + G.Ys[run.Line + 1]) * 0.5f;
+        var go = new GameObject("MergeArrow");
+        go.transform.SetParent(root, false);
+        go.transform.localPosition = ToLocal(new Vector2(OuterRightX - mergeArrowInset, yc - mergeArrowOffsetY));
+        go.transform.localScale = Vector3.one * mergeArrowScale;
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = mergeArrow;
+        sr.color = mergeArrowColor;
+        sr.sortingOrder = 7;
+        if (dashMaterial != null) sr.sharedMaterial = dashMaterial;
+        AddDashZone(go.transform, mergeArrow);
+    }
+
+    /// <summary>Barrier chặn làn trái ngay dưới đường giữa. Không có đường giữa / tắt → ẩn barrier.</summary>
+    private void PlaceBarrier(InnerRun? run)
+    {
+        if (barrier == null) return;
+        bool on = run.HasValue;
+        if (barrier.gameObject.activeSelf != on) barrier.gameObject.SetActive(on);
+        if (!on) return;
+#if UNITY_EDITOR
+        if (!Application.isPlaying) UnityEditor.Undo.RecordObject(barrier, "Place Barrier");
+#endif
+        float y = G.Ys[run.Value.Line + 1] + barrierGap;
+        Vector3 w = PxToWorld(new Vector2(OuterLeftX + barrierInset, y));
+        barrier.position = new Vector3(w.x, barrier.position.y, w.z);
+        // Tay chắn ngang hết làn trái → không vẽ vạch vòng ngoài ngay trên/dưới nó (vạch li ti vẫn được chạy tới sát).
+        AddDashZonePx(new Vector2(OuterLeftX + map.roadWidth * 0.5f, y), new Vector2(map.roadWidth * 0.5f, barrierDashClearance), true);
+    }
+
+    /// <summary>Đường vạch li ti: từ sát mép ngoài làn trái (trên mép trên đường giữa) cong xuống đầu tay chắn (như RoadNetwork).</summary>
+    private List<Vector2> BarrierGuidePath(InnerRun run)
+    {
+        float midTop = G.Ys[run.Line], midBot = G.Ys[run.Line + 1];
+        Vector2 p0 = new(OuterLeftX + (OuterColEdge - OuterColIn) + 15f, midTop - barrierGuideTop);
+        Vector2 p2 = new(G.Xs[run.A] - map.islandPadding - 10f, midBot + barrierGap - barrierGuideBottom);
+        Vector2 c = new(Mathf.Lerp(p0.x, p2.x, 0.2f), Mathf.Lerp(p0.y, p2.y, 0.7f));
+        var pts = new List<Vector2>();
+        for (int k = 0; k <= 24; k++) { float t = k / 24f, u = 1f - t; pts.Add(u * u * p0 + 2f * u * t * c + t * t * p2); }
+        return pts;
+    }
+
+    // ---------- Vùng cấm vạch đứt ----------
+
+    private struct DashZone
+    {
+        public Vector2 C, Half;
+        public float Cos, Sin;
+        public bool LoopOnly; // chỉ chặn vạch vòng ngoài
+        public bool Contains(Vector2 p)
+        {
+            Vector2 d = p - C;
+            float x = d.x * Cos + d.y * Sin, y = -d.x * Sin + d.y * Cos;
+            return Mathf.Abs(x) <= Half.x && Mathf.Abs(y) <= Half.y;
+        }
+    }
+
+    private readonly List<DashZone> dashZones = new();
+
+    private void AddDashZone(Transform t, Sprite s)
+    {
+        Bounds b = s.bounds;
+        Vector3 sc = t.localScale;
+        Vector3 c = t.localPosition + t.localRotation * Vector3.Scale(b.center, sc);
+        float a = t.localEulerAngles.z * Mathf.Deg2Rad, pad = dashClearance * PxToUnit;
+        dashZones.Add(new DashZone
+        {
+            C = c, Cos = Mathf.Cos(a), Sin = Mathf.Sin(a),
+            Half = new Vector2(Mathf.Abs(b.extents.x * sc.x) + pad, Mathf.Abs(b.extents.y * sc.y) + pad),
+        });
+    }
+
+    private void AddDashZonePx(Vector2 centerPx, Vector2 halfPx, bool loopOnly = false) =>
+        dashZones.Add(new DashZone { C = ToLocal(centerPx), Cos = 1f, Sin = 0f, Half = halfPx * PxToUnit, LoopOnly = loopOnly });
+
+    private bool InDashZone(Vector2 px, bool loop)
+    {
+        Vector2 p = ToLocal(px);
+        foreach (DashZone z in dashZones) if ((loop || !z.LoopOnly) && z.Contains(p)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Rải vạch dọc path, né vùng cấm: cắt thành các đoạn liền ngoài vùng cấm, mỗi đoạn chia đều (như DashAlong của RoadNetwork).
+    /// </summary>
+    private void DashAlong(Transform parent, List<Vector2> pts, bool closed, Sprite sprite, float scale, float period, bool loopPath,
+        bool stopAtFirstBlock = false)
+    {
+        List<(Vector2 p, Vector2 d)> sp = Resample(pts, closed);
+        int count = sp.Count;
+        if (count < 2) return;
+        var inside = new bool[count];
+        int firstIn = -1;
+        for (int i = 0; i < count; i++) { inside[i] = InDashZone(sp[i].p, loopPath); if (inside[i] && firstIn < 0) firstIn = i; }
+
+        if (closed && firstIn < 0) { DashRun(parent, sp, 0, count, true, sprite, scale, period); return; }
+
+        int start = closed ? firstIn : 0, runStart = -1;
+        for (int j = 0; j <= count; j++)
+        {
+            bool blocked = j == count || inside[(start + j) % count];
+            if (!blocked && runStart < 0) runStart = j;
+            if (blocked && runStart >= 0)
+            {
+                DashRun(parent, sp, start + runStart, j - runStart, false, sprite, scale, period);
+                runStart = -1;
+                if (stopAtFirstBlock) return; // vạch đường giữa dừng ở mũi tên nhập làn
+            }
+        }
+    }
+
+    /// <summary>Đường trong: dải ô đường thẳng (ngang/dọc), không thuộc vòng ngoài, 2 đầu giáp ô đường vòng ngoài.</summary>
+    /// <summary>Đường trong (lưới mở rộng): line = hàng (ngang) / cột (dọc), ô a..b.</summary>
+    private struct InnerRun { public bool Horiz; public int Line, A, B; }
+
+    /// <summary>Dải ô đường thẳng không thuộc vòng ngoài, 2 đầu giáp ô đường vòng ngoài. Ngang trước (trên → dưới), rồi dọc.</summary>
+    private List<InnerRun> InnerRuns()
+    {
+        var res = new List<InnerRun>();
+        bool Inner(int x, int y) => G.IsRoad(x, y) && !IsRingRoad(x, y);
+        for (int axis = 0; axis < 2; axis++)
+        {
+            bool horiz = axis == 0;
+            int lines = horiz ? G.Height : G.Width, len = horiz ? G.Width : G.Height;
+            for (int line = 0; line < lines; line++)
+            {
+                int k = 0;
+                while (k < len)
+                {
+                    Vector2Int C(int t) => horiz ? new Vector2Int(t, line) : new Vector2Int(line, t);
+                    if (!Inner(C(k).x, C(k).y)) { k++; continue; }
+                    int a = k;
+                    while (k < len && Inner(C(k).x, C(k).y)) k++;
+                    int b = k - 1;
+                    Vector2Int before = C(a - 1), after = C(b + 1);
+                    if (!IsRingRoad(before.x, before.y) || !IsRingRoad(after.x, after.y)) continue;
+                    res.Add(new InnerRun { Horiz = horiz, Line = line, A = a, B = b });
+                }
+            }
+        }
+        return res;
+    }
+
+    private List<Vector2> InnerPath(List<Vector2> lane, InnerRun r) =>
+        r.Horiz ? HorizontalInnerPath(lane, r.Line, r.A, r.B) : VerticalInnerPath(lane, r.Line, r.A, r.B);
+
+    // Mép ngoài vòng (px) trái / phải.
+    private float OuterLeftX => G.Xs[0] - DeltaX - map.islandPadding;
+    private float OuterRightX => G.Xs[G.Width] + DeltaX + map.islandPadding;
+
+    /// <summary>
+    /// Sừng đảo dưới đường giữa (như RoadNetwork): ở 2 đầu mỗi đường ngang trong, mép trên đảo bên dưới hất lên theo cung
+    /// đồng tâm với góc bo đảo bên trên (tâm (mép đảo ± r, mép trên đường − r), bán kính r + bề rộng đường) → đầu sừng nhọn.
+    /// </summary>
+    private void LiftHorns(Loop l)
+    {
+        bool changed = false;
+        foreach (InnerRun run in InnerRuns())
+        {
+            if (!run.Horiz) continue;
+            float r = map.junctionRadius, pad = map.islandPadding;
+            float yT = G.Ys[run.Line], yB = G.Ys[run.Line + 1], R = r + (yB - yT), cy = yT - r;
+            for (int side = 0; side < 2; side++)
+            {
+                float xE = side == 0 ? G.Xs[run.A] - pad : G.Xs[run.B + 1] + pad;
+                float cx = side == 0 ? xE + r : xE - r;
+                for (int i = 0; i < l.Pts.Count; i++)
+                {
+                    Vector2 p = l.Pts[i].P;
+                    if (p.y < yB - 0.5f || p.y > yB + r + 0.5f) continue;
+                    bool inX = side == 0 ? p.x >= xE - 0.5f && p.x <= cx : p.x <= xE + 0.5f && p.x >= cx;
+                    if (!inX) continue;
+                    float dx = Mathf.Clamp(p.x - cx, -R, R);
+                    float y = cy + Mathf.Sqrt(R * R - dx * dx);
+                    if (y >= p.y - 0.01f) continue;
+                    l.Pts[i] = new Pt(new Vector2(p.x, y), l.Pts[i].N);
+                    changed = true;
+                }
+            }
+        }
+        if (!changed) return;
+
+        // Bỏ điểm trùng (nhiều điểm dồn về đầu sừng), tính lại pháp tuyến theo hướng cũ.
+        var pts = new List<Pt>();
+        var curb = new List<bool>();
+        for (int i = 0; i < l.Pts.Count; i++)
+        {
+            if (pts.Count > 0 && Vector2.Distance(pts[^1].P, l.Pts[i].P) < 0.5f) { curb[^1] = curb[^1] || l.Curb[i]; continue; }
+            pts.Add(l.Pts[i]);
+            curb.Add(l.Curb[i]);
+        }
+        int n = pts.Count;
+        for (int i = 0; i < n; i++)
+        {
+            Vector2 t = pts[(i + 1) % n].P - pts[(i - 1 + n) % n].P;
+            if (t.sqrMagnitude < 1e-6f) continue;
+            Vector2 nn = new Vector2(t.y, -t.x).normalized;
+            if (Vector2.Dot(nn, pts[i].N) < 0f) nn = -nn;
+            pts[i] = new Pt(pts[i].P, nn);
+        }
+        l.Pts = pts;
+        l.Curb = curb;
+    }
+
+    private List<Vector2> HorizontalInnerPath(List<Vector2> lane, int row, int a, int b)
+    {
+        float yc = (G.Ys[row] + G.Ys[row + 1]) * 0.5f;
+        float xa = G.Xs[a], xb = G.Xs[b + 1];
+        if (!LaneCross(lane, true, yc, xa, -1, out float xl) || !LaneCross(lane, true, yc, xb, 1, out float xr)) return null;
+        // Như RoadNetwork.MiddleLanePath: ngang = (tâm làn → mép đảo) + bo ngã ba; dọc thêm nửa bề rộng đường trong.
+        float r = map.junctionRadius, pad = map.islandPadding, half = (G.Ys[row + 1] - G.Ys[row]) * 0.5f;
+        float kl = Mathf.Min(xa - pad - xl + r, (xb - xa) * 0.5f + (xa - xl));
+        float kr = Mathf.Min(xr - (xb + pad) + r, (xb - xa) * 0.5f + (xr - xb));
+        var pts = new List<Vector2>();
+        Quad(pts, new Vector2(xl, yc - half - kl), new Vector2(xl, yc), new Vector2(xl + kl, yc));
+        Quad(pts, new Vector2(xr - kr, yc), new Vector2(xr, yc), new Vector2(xr, yc - half - kr));
+        return TrimBranch(pts);
+    }
+
+    private List<Vector2> VerticalInnerPath(List<Vector2> lane, int col, int a, int b)
+    {
+        float xc = (G.Xs[col] + G.Xs[col + 1]) * 0.5f;
+        float ya = G.Ys[a], yb = G.Ys[b + 1];
+        if (!LaneCross(lane, false, xc, ya, -1, out float yt) || !LaneCross(lane, false, xc, yb, 1, out float ybo)) return null;
+        float r = map.junctionRadius, pad = map.islandPadding, half = (G.Xs[col + 1] - G.Xs[col]) * 0.5f;
+        float kt = Mathf.Min(ya - pad - yt + r, (yb - ya) * 0.5f + (ya - yt));
+        float kb = Mathf.Min(ybo - (yb + pad) + r, (yb - ya) * 0.5f + (ybo - yb));
+        var pts = new List<Vector2>();
+        Quad(pts, new Vector2(xc + half + kt, yt), new Vector2(xc, yt), new Vector2(xc, yt + kt));
+        Quad(pts, new Vector2(xc, ybo - kb), new Vector2(xc, ybo), new Vector2(xc + half + kb, ybo));
+        return TrimBranch(pts);
+    }
+
+    private static void Quad(List<Vector2> pts, Vector2 p0, Vector2 c, Vector2 p1)
+    {
+        for (int k = 0; k <= 16; k++) { float t = k / 16f, u = 1f - t; pts.Add(u * u * p0 + 2f * u * t * c + t * t * p1); }
+    }
+
+    /// <summary>
+    /// Giao của làn vòng ngoài với đường thẳng (ngang y = v nếu horiz, dọc x = v), lấy giao gần from nhất về phía dir (−1/+1).
+    /// </summary>
+    private static bool LaneCross(List<Vector2> lane, bool horiz, float v, float from, int dir, out float at)
+    {
+        at = 0f;
+        float best = float.MaxValue;
+        int n = lane.Count;
+        for (int i = 0; i < n; i++)
+        {
+            Vector2 p = lane[i], q = lane[(i + 1) % n];
+            float pv = horiz ? p.y : p.x, qv = horiz ? q.y : q.x;
+            if ((pv - v) * (qv - v) > 0f || Mathf.Approximately(pv, qv)) continue;
+            float t = (v - pv) / (qv - pv);
+            float c = horiz ? Mathf.Lerp(p.x, q.x, t) : Mathf.Lerp(p.y, q.y, t);
+            float d = (c - from) * dir;
+            if (d >= 0f && d < best) { best = d; at = c; }
+        }
+        return best < float.MaxValue;
+    }
+
+    /// <summary>Bỏ đoạn đầu/cuối còn chạy thẳng trùng làn vòng ngoài (lệch &lt; turnDashBranch) — như TurnDashPath của RoadNetwork.</summary>
+    private List<Vector2> TrimBranch(List<Vector2> p)
+    {
+        if (p.Count < 3) return p;
+        Vector2 s = p[0], e = p[^1];
+        // 2 đầu luôn bám làn thẳng (dọc/ngang) → đo lệch vuông góc với trục đó (như RoadNetwork đo |x − x làn|).
+        static Vector2 Axis(Vector2 v) => Mathf.Abs(v.x) > Mathf.Abs(v.y) ? Vector2.right : Vector2.up;
+        Vector2 ds = Axis(p[1] - p[0]), de = Axis(p[^1] - p[^2]);
+        float Off(Vector2 q, Vector2 o, Vector2 d) { Vector2 v = q - o; return Mathf.Abs(v.x * d.y - v.y * d.x); }
+        int i0 = 0, i1 = p.Count - 1;
+        while (i0 + 1 < i1 && Off(p[i0 + 1], s, ds) < turnDashBranch) i0++;
+        while (i1 - 1 > i0 && Off(p[i1 - 1], e, de) < turnDashBranch) i1--;
+        return p.GetRange(i0, i1 - i0 + 1);
+    }
+
+    /// <summary>Lấy mẫu đều 10px theo quãng đường (kèm hướng).</summary>
+    private static List<(Vector2 p, Vector2 d)> Resample(List<Vector2> pts, bool closed)
+    {
+        const float step = 10f;
+        var res = new List<(Vector2, Vector2)>();
+        int segs = closed ? pts.Count : pts.Count - 1;
+        for (int i = 0; i < segs; i++)
+        {
+            Vector2 a = pts[i], b = pts[(i + 1) % pts.Count];
+            float len = Vector2.Distance(a, b);
+            if (len < 0.001f) continue;
+            Vector2 dir = (b - a) / len;
+            int n = Mathf.Max(1, Mathf.CeilToInt(len / step));
+            for (int k = 0; k < n; k++) res.Add((a + dir * (len * k / n), dir));
+        }
+        if (!closed && pts.Count > 0) res.Add((pts[^1], res.Count > 0 ? res[^1].Item2 : Vector2.right));
+        return res;
+    }
+
+    /// <summary>Rải vạch đều: n = round(dài / dashPeriod), vạch thứ d ở (d + 0.5)·khoảng (như DashRun của RoadNetwork).</summary>
+    private void DashRun(Transform parent, List<(Vector2 p, Vector2 d)> sp, int first, int n, bool loop,
+        Sprite sprite, float scale, float period)
+    {
+        if (n < 2) return;
+        int count = sp.Count;
+        (Vector2 p, Vector2 d) S(int k) => sp[(first + k) % count];
+        var cum = new float[n];
+        for (int k = 1; k < n; k++) cum[k] = cum[k - 1] + Vector2.Distance(S(k - 1).p, S(k).p);
+        float total = loop ? cum[n - 1] + Vector2.Distance(S(n - 1).p, S(0).p) : cum[n - 1];
+        int dashes = Mathf.RoundToInt(total / period);
+        if (dashes <= 0) return;
+        float spacing = total / dashes;
+        float spriteAngle = sprite.rect.height > sprite.rect.width ? -90f : 0f;
+        int k0 = 0;
+        for (int d = 0; d < dashes; d++)
+        {
+            float target = (d + 0.5f) * spacing;
+            while (k0 + 1 < n && cum[k0 + 1] < target) k0++;
+            Vector2 a = S(k0).p;
+            Vector2 b = k0 + 1 < n ? S(k0 + 1).p : (loop ? S(0).p : a);
+            float segLen = (k0 + 1 < n ? cum[k0 + 1] : total) - cum[k0];
+            Vector2 p = segLen > 1e-4f ? Vector2.Lerp(a, b, (target - cum[k0]) / segLen) : a;
+            Vector2 dir = S(k0).d;
+
+            var go = new GameObject("Dash");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = ToLocal(p);
+            go.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(-dir.y, dir.x) * Mathf.Rad2Deg + spriteAngle);
+            go.transform.localScale = Vector3.one * (sprite.pixelsPerUnit * PxToUnit * scale);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sortingOrder = 5;
+            if (dashMaterial != null) sr.sharedMaterial = dashMaterial;
         }
     }
 
@@ -1077,7 +1563,7 @@ public class RoadMapBuilder : MonoBehaviour
             {
                 if (r.Dir != new Vector2Int(0, 1) || G.Xs[r.Start.x] <= bestX) continue; // (0,1) = đi xuống = cạnh phải
                 bestX = G.Xs[r.Start.x];
-                roadWidthHandlePx = new Vector2(bestX + Delta + map.islandPadding, (G.Ys[r.Start.y] + G.Ys[r.Start.y + r.Len]) * 0.5f);
+                roadWidthHandlePx = new Vector2(bestX + DeltaX + map.islandPadding, (G.Ys[r.Start.y] + G.Ys[r.Start.y + r.Len]) * 0.5f);
                 hasRoadWidthHandle = true;
             }
         }

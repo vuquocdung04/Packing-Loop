@@ -418,8 +418,9 @@ public class RoadMapWindow : OdinEditorWindow
             AssetDatabase.LoadAssetAtPath<Material>("Assets/00_Game/Arts/Road/RoadCurbSide.mat"),
             AssetDatabase.LoadAssetAtPath<Sprite>("Assets/01_PackingLoop/RipImport/Sprite/asphalt-texture_0.asset"),
             AssetDatabase.LoadAssetAtPath<Material>("Assets/01_PackingLoop/BoardMesh.mat"));
-        builder.SetArrowArt(LoadArrowSprite(),
-            AssetDatabase.LoadAssetAtPath<Material>("Packages/com.unity.render-pipelines.universal/Runtime/Materials/Sprite-Unlit-Default.mat"));
+        var spriteMat = AssetDatabase.LoadAssetAtPath<Material>("Packages/com.unity.render-pipelines.universal/Runtime/Materials/Sprite-Unlit-Default.mat");
+        builder.SetArrowArt(LoadArrowSprite(), spriteMat);
+        builder.SetDashArt(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/00_Game/Arts/Road/RoadDash_Round.png"), spriteMat);
         EditorUtility.SetDirty(builder);
         return builder;
     }
